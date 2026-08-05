@@ -1,0 +1,40 @@
+# Built artifacts
+bin/
+gen/
+out/
+build/
+.gradle/
+.kotlin/
+.navigation/
+
+# IDE files
+.idea/
+*.iml
+*.iws
+*.ipr
+.settings/
+.project
+.classpath
+.factorypath
+
+# Android Studio / IntelliJ
+*.keystore
+!debug.keystore
+google-services.json
+.DS_Store
+captures/
+externalNativeBuild/
+.cxx/
+local.properties
+
+# Log files
+*.log
+
+# JSON data files (assuming they are sample data and not part of the source)
+# aligned_pairs_book.json
+# final_aligned_book.json
+
+# If you want to exclude these specific files, uncomment the lines above.
+# Given they are in the root and large, maybe they should be ignored?
+# But for now I will leave them commented out to let user decide,
+# or I will just include them if I'm not sure.
