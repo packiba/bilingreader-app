@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Simplified Book Shape for Monochrome -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M24,36 C24,36 54,42 54,36 C54,42 84,36 84,36 L84,72 C84,72 54,78 54,72 C54,78 24,72 24,72 Z M54,38 L54,70 M30,46 h18 M30,52 h18 M30,58 h18 M30,64 h12 M60,46 h18 M60,52 h18 M60,58 h18 M60,64 h12"
+        android:strokeWidth="2"
+        android:strokeColor="#FF000000" />
+</vector>
