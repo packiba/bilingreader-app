@@ -7,7 +7,10 @@ import androidx.lifecycle.viewModelScope
 import com.example.bilingreader.data.datastore.ReaderPreferences
 import com.example.bilingreader.data.model.Book
 import com.example.bilingreader.data.repository.BookRepository
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,6 +40,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     private val prefs = ReaderPreferences(application)
     private val _state = MutableStateFlow(ReaderUiState())
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
+
+    // Reading position + read-set are saved together, debounced — see schedulePersistProgress().
+    private var persistProgressJob: Job? = null
 
     private fun totalPairs(): Int = _state.value.book?.totalPairs ?: 0
 
@@ -109,9 +115,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         _state.update {
             it.copy(readPairs = it.readPairs + pairIndex)
         }
-        viewModelScope.launch {
-            prefs.saveReadPairs(_state.value.fileHash, _state.value.readPairs)
-        }
+        schedulePersistProgress()
     }
 
     fun markAsUnread(pairIndex: Int) {
@@ -119,9 +123,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         _state.update {
             it.copy(readPairs = it.readPairs - pairIndex)
         }
-        viewModelScope.launch {
-            prefs.saveReadPairs(_state.value.fileHash, _state.value.readPairs)
-        }
+        schedulePersistProgress()
     }
 
     fun markAsReadAndNext(pairIndex: Int) {
@@ -144,7 +146,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 scrollRequest = ScrollRequest(clamped, (it.scrollRequest?.token ?: 0) + 1, isSlow)
             )
         }
-        viewModelScope.launch { prefs.saveLastReadPair(_state.value.fileHash, clamped) }
+        schedulePersistProgress()
     }
 
     /**
@@ -156,7 +158,39 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val clamped = index.coerceIn(0, (totalPairs() - 1).coerceAtLeast(0))
         if (clamped == _state.value.currentPairIndex) return
         _state.update { it.copy(currentPairIndex = clamped) }
-        viewModelScope.launch { prefs.saveLastReadPair(_state.value.fileHash, clamped) }
+        schedulePersistProgress()
+    }
+
+    /**
+     * Position and read-set are the app's most frequently-changing state — every swipe and
+     * every scroll settle touches one or both. DataStore's Preferences implementation rewrites
+     * its entire backing file on every `edit` call, so writing on every single interaction was
+     * putting disk I/O directly on the hot path of reading. Debouncing batches bursts of rapid
+     * interaction (fast swiping, a flurry of scroll settles) into a single write ~500ms after
+     * things calm down, without ever going more than that long without persisting.
+     */
+    private fun schedulePersistProgress() {
+        persistProgressJob?.cancel()
+        persistProgressJob = viewModelScope.launch {
+            delay(500)
+            val snapshot = _state.value
+            prefs.saveProgress(snapshot.fileHash, snapshot.currentPairIndex, snapshot.readPairs)
+        }
+    }
+
+    /**
+     * Best-effort flush of a pending debounced write. viewModelScope is cancelled as soon as
+     * onCleared() starts, so the delayed job above would simply be dropped without this — we
+     * fire the final write on an independent scope so it isn't cancelled along with it.
+     */
+    override fun onCleared() {
+        super.onCleared()
+        if (persistProgressJob?.isActive == true) {
+            val snapshot = _state.value
+            CoroutineScope(Dispatchers.IO).launch {
+                prefs.saveProgress(snapshot.fileHash, snapshot.currentPairIndex, snapshot.readPairs)
+            }
+        }
     }
 
     fun goToPrevChapter() {

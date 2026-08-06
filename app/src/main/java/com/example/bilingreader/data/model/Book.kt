@@ -15,5 +15,8 @@ data class Chapter(
 data class Book(
     val chapters: List<Chapter>
 ) {
-    val totalPairs: Int get() = chapters.sumOf { it.pairs.size }
+    // Computed once and cached: totalPairs was being summed over every chapter on every
+    // interaction (each swipe, each scroll settle, each slider release) even though the book's
+    // contents never change after it's loaded.
+    val totalPairs: Int by lazy(LazyThreadSafetyMode.NONE) { chapters.sumOf { it.pairs.size } }
 }

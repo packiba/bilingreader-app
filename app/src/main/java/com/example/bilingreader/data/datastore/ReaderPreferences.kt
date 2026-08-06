@@ -38,12 +38,18 @@ class ReaderPreferences(private val context: Context) {
         )
     }
 
-    suspend fun saveReadPairs(hash: String, pairs: Set<Int>) {
-        context.store.edit { it[sk("read_pairs", hash)] = pairs.joinToString(",") }
-    }
-
-    suspend fun saveLastReadPair(hash: String, pair: Int) {
-        context.store.edit { it[ik("last_read_pair", hash)] = pair }
+    /**
+     * Saves reading position and the read-set together in a single DataStore transaction.
+     * Preferences DataStore rewrites its entire backing file on every `edit` call regardless of
+     * how small the change is, so batching the two values that change together (current
+     * position, read-set) into one write instead of two halves the disk I/O for the app's most
+     * frequent interaction — reading and swiping through the text.
+     */
+    suspend fun saveProgress(hash: String, lastReadPair: Int, readPairs: Set<Int>) {
+        context.store.edit {
+            it[ik("last_read_pair", hash)] = lastReadPair
+            it[sk("read_pairs", hash)] = readPairs.joinToString(",")
+        }
     }
 
     suspend fun saveFontSize(hash: String, size: Int) {

@@ -24,7 +24,7 @@ import com.example.bilingreader.ui.screen.ReaderViewModel
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 
-private const val SCROLL_ANIM_MILLIS = 320
+private const val SCROLL_ANIM_MILLIS = 200
 
 /**
  * One flattened, pre-resolved row of the book, built once per (book, columnsSwapped) pair
@@ -80,8 +80,9 @@ fun BookPager(viewModel: ReaderViewModel) {
             .collect { index -> viewModel.onUserScrolled(index) }
     }
 
-    // Explicit navigation requests (mark-as-read, chapter jump, sidebar, slider) — always
-    // smoothly animate and land the target row exactly at the top of the screen.
+    // Explicit navigation requests (mark-as-read, chapter jump, sidebar, slider). Nearby jumps
+    // (target already on screen) get a smooth pixel-perfect animation; far jumps snap instantly
+    // — see the branches below.
     val scrollRequest = state.scrollRequest
     LaunchedEffect(scrollRequest) {
         if (scrollRequest == null) return@LaunchedEffect
@@ -96,9 +97,13 @@ fun BookPager(viewModel: ReaderViewModel) {
                 animationSpec = tween(duration, easing = FastOutSlowInEasing)
             )
         } else {
-            // Target far outside the current viewport (e.g. jumping chapters):
-            // no pixel distance to measure yet, fall back to the built-in scroll.
-            listState.animateScrollToItem(target)
+            // Target is far outside the current viewport (chapter jump, sidebar tap, slider
+            // release on a distant page). `animateScrollToItem` has to lay out every
+            // intermediate row to estimate scroll distance, and since PairRow heights vary a
+            // lot (short lines vs. long paragraphs), that estimation is expensive and reads as
+            // a slow, janky scroll for big jumps. A hard, instant jump is both cheaper and
+            // matches what a "go to chapter" action should feel like — snap straight there.
+            listState.scrollToItem(target)
         }
     }
 
