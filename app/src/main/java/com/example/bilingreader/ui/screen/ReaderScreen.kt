@@ -1,10 +1,13 @@
 package com.example.bilingreader.ui.screen
 
+import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -46,6 +50,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.bilingreader.ui.components.ChapterSidebar
@@ -149,10 +155,18 @@ fun ReaderScreen(
                             tint = contentColor
                         )
                     }
-                    IconButton(onClick = { showToolbar = false }, modifier = Modifier.height(32.dp)) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    val context = LocalContext.current
+                    IconButton(onClick = {
+                        val intent = Intent(Intent.ACTION_MAIN).apply {
+                            addCategory(Intent.CATEGORY_HOME)
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(intent)
+                    }, modifier = Modifier.height(32.dp)) {
                         Icon(
-                            Icons.Default.KeyboardArrowUp,
-                            "Hide toolbar",
+                            Icons.Default.Close,
+                            "Minimize app",
                             modifier = Modifier.height(18.dp),
                             tint = contentColor
                         )
@@ -175,61 +189,77 @@ fun ReaderScreen(
 
         // Bottom bar
         if (state.book != null && totalPairs > 0) {
+            val bottomBarHeight = if (showToolbar) 40.dp else 24.dp
+            val iconSize = if (showToolbar) 20.dp else 16.dp
+            val buttonSize = if (showToolbar) 36.dp else 24.dp
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(40.dp)
-                    .background(bgColor),
+                    .height(bottomBarHeight)
+                    .background(bgColor)
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures { change, dragAmount ->
+                            if (dragAmount < -10f) { // Upward swipe
+                                showSidebar = true
+                            }
+                        }
+                    },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
                     onClick = { showToolbar = !showToolbar },
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(buttonSize)
                 ) {
                     Icon(
-                        if (showToolbar) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        if (showToolbar) "Hide toolbar" else "Show toolbar",
-                        modifier = Modifier.size(20.dp),
+                        if (showToolbar) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
+                        if (showToolbar) "Show toolbar" else "Hide toolbar",
+                        modifier = Modifier.size(iconSize),
                         tint = contentColor
                     )
                 }
-                IconButton(
-                    onClick = { viewModel.goToPrevChapter() },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        Icons.Default.SkipPrevious,
-                        "Previous chapter",
-                        modifier = Modifier.size(20.dp),
-                        tint = contentColor
-                    )
+                AnimatedVisibility(visible = showToolbar) {
+                    IconButton(
+                        onClick = { viewModel.goToPrevChapter() },
+                        modifier = Modifier.size(buttonSize)
+                    ) {
+                        Icon(
+                            Icons.Default.SkipPrevious,
+                            "Previous chapter",
+                            modifier = Modifier.size(iconSize),
+                            tint = contentColor
+                        )
+                    }
                 }
                 Box(modifier = Modifier.weight(1f)) {
                     PageSlider(
                         currentPage = state.currentPairIndex,
                         totalPages = totalPairs,
+                        enabled = showToolbar,
                         onPageChange = { viewModel.setCurrentPairIndex(it) }
                     )
                 }
-                IconButton(
-                    onClick = { viewModel.goToNextChapter() },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        Icons.Default.SkipNext,
-                        "Next chapter",
-                        modifier = Modifier.size(20.dp),
-                        tint = contentColor
-                    )
+                AnimatedVisibility(visible = showToolbar) {
+                    IconButton(
+                        onClick = { viewModel.goToNextChapter() },
+                        modifier = Modifier.size(buttonSize)
+                    ) {
+                        Icon(
+                            Icons.Default.SkipNext,
+                            "Next chapter",
+                            modifier = Modifier.size(iconSize),
+                            tint = contentColor
+                        )
+                    }
                 }
                 IconButton(
                     onClick = { showSidebar = true },
-                    modifier = Modifier.size(36.dp)
+                    modifier = Modifier.size(buttonSize)
                 ) {
                     Icon(
                         Icons.Default.Menu,
                         "Chapters",
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(iconSize),
                         tint = contentColor
                     )
                 }

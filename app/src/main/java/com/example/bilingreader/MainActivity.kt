@@ -58,7 +58,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun hideSystemNavBar() {
+    fun hideSystemNavBar() {
         if (Build.VERSION.SDK_INT >= 30) {
             window.insetsController?.let { c ->
                 c.hide(WindowInsets.Type.navigationBars() or WindowInsets.Type.statusBars())

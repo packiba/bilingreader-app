@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 fun PageSlider(
     currentPage: Int,
     totalPages: Int,
+    enabled: Boolean = true,
     onPageChange: (Int) -> Unit
 ) {
     Row(
@@ -34,24 +35,29 @@ fun PageSlider(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(text = "${currentPage + 1} / $totalPages", fontSize = 11.sp)
+        if (enabled) {
+            Text(text = "${currentPage + 1} / $totalPages", fontSize = 11.sp)
+        }
         Slider(
             value = currentPage.toFloat(),
-            onValueChange = { onPageChange(it.toInt()) },
+            onValueChange = { if (enabled) onPageChange(it.toInt()) },
             valueRange = 0f..(totalPages - 1).coerceAtLeast(0).toFloat(),
             modifier = Modifier.weight(1f),
+            enabled = enabled,
             thumb = {
-                Box(
-                    modifier = Modifier
-                        .size(20.dp), // Increase touch target size
-                    contentAlignment = Alignment.Center
-                ) {
+                if (enabled) {
                     Box(
                         modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary)
-                    )
+                            .size(20.dp), // Increase touch target size
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(MaterialTheme.colorScheme.primary)
+                        )
+                    }
                 }
             },
             track = { sliderState ->
@@ -59,7 +65,8 @@ fun PageSlider(
                     sliderState = sliderState,
                     modifier = Modifier.height(2.dp),
                     thumbTrackGapSize = 0.dp,
-                    trackInsideCornerSize = 1.dp
+                    trackInsideCornerSize = 1.dp,
+                    drawStopIndicator = null
                 )
             }
         )

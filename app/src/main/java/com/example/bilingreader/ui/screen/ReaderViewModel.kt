@@ -104,10 +104,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun toggleRead(pairIndex: Int) {
+    fun markAsRead(pairIndex: Int) {
+        if (pairIndex in _state.value.readPairs) return
         _state.update {
-            val new = if (pairIndex in it.readPairs) it.readPairs - pairIndex else it.readPairs + pairIndex
-            it.copy(readPairs = new)
+            it.copy(readPairs = it.readPairs + pairIndex)
         }
         viewModelScope.launch {
             prefs.saveReadPairs(_state.value.fileHash, _state.value.readPairs)
@@ -124,8 +124,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun toggleReadAndNext(pairIndex: Int) {
-        toggleRead(pairIndex)
+    fun markAsReadAndNext(pairIndex: Int) {
+        markAsRead(pairIndex)
         if (pairIndex + 1 < totalPairs()) {
             setCurrentPairIndex(pairIndex + 1, isSlow = true)
         }

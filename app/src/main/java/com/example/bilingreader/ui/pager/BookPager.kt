@@ -41,27 +41,24 @@ fun BookPager(viewModel: ReaderViewModel) {
 
     // Explicit navigation requests (mark-as-read, chapter jump, sidebar, slider) — always
     // smoothly animate and land the target row exactly at the top of the screen.
-    LaunchedEffect(listState) {
-        snapshotFlow { state.scrollRequest }
-            .distinctUntilChanged()
-            .collect { request ->
-                if (request == null) return@collect
-                val target = request.index
-                val visibleInfo = listState.layoutInfo.visibleItemsInfo.find { it.index == target }
-                if (visibleInfo != null) {
-                    // Item is already laid out: animate the exact remaining pixel distance
-                    // with our own easing/duration, landing precisely at offset 0.
-                    val duration = if (request.isSlow) SCROLL_ANIM_MILLIS * 2 else SCROLL_ANIM_MILLIS
-                    listState.animateScrollBy(
-                        value = visibleInfo.offset.toFloat(),
-                        animationSpec = tween(duration, easing = FastOutSlowInEasing)
-                    )
-                } else {
-                    // Target far outside the current viewport (e.g. jumping chapters):
-                    // no pixel distance to measure yet, fall back to the built-in scroll.
-                    listState.animateScrollToItem(target)
-                }
-            }
+    val scrollRequest = state.scrollRequest
+    LaunchedEffect(scrollRequest) {
+        if (scrollRequest == null) return@LaunchedEffect
+        val target = scrollRequest.index
+        val visibleInfo = listState.layoutInfo.visibleItemsInfo.find { it.index == target }
+        if (visibleInfo != null) {
+            // Item is already laid out: animate the exact remaining pixel distance
+            // with our own easing/duration, landing precisely at offset 0.
+            val duration = if (scrollRequest.isSlow) SCROLL_ANIM_MILLIS * 2 else SCROLL_ANIM_MILLIS
+            listState.animateScrollBy(
+                value = visibleInfo.offset.toFloat(),
+                animationSpec = tween(duration, easing = FastOutSlowInEasing)
+            )
+        } else {
+            // Target far outside the current viewport (e.g. jumping chapters):
+            // no pixel distance to measure yet, fall back to the built-in scroll.
+            listState.animateScrollToItem(target)
+        }
     }
 
     val chapterHeaders = buildSet {
@@ -104,7 +101,7 @@ fun BookPager(viewModel: ReaderViewModel) {
                         isZebra = idx % 2 == 1,
                         isDarkTheme = state.isDarkTheme,
                         fontSizeSp = state.fontSizeSp,
-                        onSwipeLeft = { viewModel.toggleReadAndNext(idx) },
+                        onSwipeLeft = { viewModel.markAsReadAndNext(idx) },
                         onSwipeRight = { viewModel.markAsUnread(idx) }
                     )
                     HorizontalDivider(color = dividerColor)
