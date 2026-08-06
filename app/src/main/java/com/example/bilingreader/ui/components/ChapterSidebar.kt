@@ -8,13 +8,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.bilingreader.data.model.Book
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -24,6 +26,8 @@ fun ChapterSidebar(
     book: Book?,
     currentPairIndex: Int,
     columnsSwapped: Boolean,
+    isDarkTheme: Boolean,
+    fontSizeSp: Int,
     onPairSelected: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -44,9 +48,16 @@ fun ChapterSidebar(
         }
     }
 
+    val bgColor = if (isDarkTheme) Color(0xFF1A1E24) else Color(0xFFF4F6F8)
+    val textColor = if (isDarkTheme) Color(0xFFD1D5DB) else Color(0xFF1F2937)
+    val dividerColor = if (isDarkTheme) Color(0x14FFFFFF) else Color(0x14000000)
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState()
+        sheetState = rememberModalBottomSheetState(),
+        containerColor = bgColor,
+        contentColor = textColor,
+        scrimColor = Color.Black.copy(alpha = 0.4f)
     ) {
         Column(
             modifier = Modifier
@@ -57,18 +68,18 @@ fun ChapterSidebar(
             chapters.forEachIndexed { ci, entry ->
                 val nextStart = chapters.getOrNull(ci + 1)?.startIdx ?: Int.MAX_VALUE
                 val isCurrent = currentPairIndex in entry.startIdx until nextStart
+                
                 Text(
                     text = entry.title,
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { onPairSelected(entry.startIdx); onDismiss() }
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    style = if (isCurrent) MaterialTheme.typography.titleSmall
-                        else MaterialTheme.typography.bodyMedium,
-                    color = if (isCurrent) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurface
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    fontSize = if (isCurrent) fontSizeSp.sp else (fontSizeSp - 3).sp,
+                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                    color = textColor
                 )
-                HorizontalDivider()
+                HorizontalDivider(color = dividerColor)
             }
         }
     }

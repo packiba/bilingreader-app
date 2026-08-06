@@ -86,11 +86,17 @@ fun BookPager(viewModel: ReaderViewModel) {
         for (chapter in book.chapters) {
             for (pair in chapter.pairs) {
                 val idx = globalIdx
-                val title = if (state.columnsSwapped) chapter.titleTgt else chapter.titleSrc
                 val showHeader = idx in chapterHeaders
 
                 item(key = idx) {
-                    if (showHeader) ChapterHeader(title = title!!)
+                    if (showHeader) {
+                        ChapterHeader(
+                            titleSrc = if (state.columnsSwapped) chapter.titleTgt ?: "" else chapter.titleSrc ?: "",
+                            titleTgt = if (state.columnsSwapped) chapter.titleSrc ?: "" else chapter.titleTgt ?: "",
+                            isDarkTheme = state.isDarkTheme,
+                            fontSizeSp = state.fontSizeSp
+                        )
+                    }
                     PairRow(
                         srcText = if (state.columnsSwapped) pair.tgt else pair.src,
                         tgtText = if (state.columnsSwapped) pair.src else pair.tgt,

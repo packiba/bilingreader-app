@@ -14,6 +14,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.bilingreader.ui.theme.BilingReaderTheme
@@ -44,8 +46,8 @@ class MainActivity : ComponentActivity() {
 
             LaunchedEffect(Unit) { viewModel.tryRestoreLastFile() }
 
-            val isDark = viewModel.state.value.isDarkTheme
-            BilingReaderTheme(darkTheme = isDark) {
+            val state by viewModel.state.collectAsState()
+            BilingReaderTheme(darkTheme = state.isDarkTheme) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     ReaderScreen(
                         viewModel = viewModel,

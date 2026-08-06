@@ -243,6 +243,8 @@ fun ReaderScreen(
         book = state.book,
         currentPairIndex = state.currentPairIndex,
         columnsSwapped = state.columnsSwapped,
+        isDarkTheme = state.isDarkTheme,
+        fontSizeSp = state.fontSizeSp,
         onPairSelected = { viewModel.setCurrentPairIndex(it) },
         onDismiss = { showSidebar = false }
     )
