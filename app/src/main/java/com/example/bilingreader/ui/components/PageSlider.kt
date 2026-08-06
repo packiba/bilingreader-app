@@ -15,7 +15,11 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,17 +34,34 @@ fun PageSlider(
     enabled: Boolean = true,
     onPageChange: (Int) -> Unit
 ) {
+    // While the finger is down we track the drag position purely as local UI state and only
+    // commit it (navigate + persist + animate scroll) once the drag ends. Committing on every
+    // intermediate onValueChange tick was triggering a disk write and a fresh animated scroll
+    // per pixel of drag, which is what made dragging the slider feel janky.
+    var isDragging by remember { mutableStateOf(false) }
+    var dragValue by remember { mutableFloatStateOf(currentPage.toFloat()) }
+    val displayedPage = if (isDragging) dragValue.toInt() else currentPage
+
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         if (enabled) {
-            Text(text = "${currentPage + 1} / $totalPages", fontSize = 11.sp)
+            Text(text = "${displayedPage + 1} / $totalPages", fontSize = 11.sp)
         }
         Slider(
-            value = currentPage.toFloat(),
-            onValueChange = { if (enabled) onPageChange(it.toInt()) },
+            value = if (isDragging) dragValue else currentPage.toFloat(),
+            onValueChange = {
+                if (enabled) {
+                    isDragging = true
+                    dragValue = it
+                }
+            },
+            onValueChangeFinished = {
+                isDragging = false
+                if (enabled) onPageChange(dragValue.toInt())
+            },
             valueRange = 0f..(totalPages - 1).coerceAtLeast(0).toFloat(),
             modifier = Modifier.weight(1f),
             enabled = enabled,
