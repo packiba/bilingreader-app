@@ -43,11 +43,12 @@ private fun buildRenderRows(book: Book, columnsSwapped: Boolean): List<RenderRow
     var globalIdx = 0
     var lastHeaderTitle: String? = null
     for (chapter in book.chapters) {
-        val title = if (columnsSwapped) chapter.titleTgt else chapter.titleSrc
-        val showHeaderOnFirstPair = !title.isNullOrBlank() && title != lastHeaderTitle
+        // Hierarchical path when available (nested books); falls back to leaf title
+        val title = if (columnsSwapped) chapter.displayTitleTgt() else chapter.displayTitleSrc()
+        val showHeaderOnFirstPair = title.isNotBlank() && title != "—" && title != lastHeaderTitle
         if (showHeaderOnFirstPair) lastHeaderTitle = title
-        val headerTitleSrc = (if (columnsSwapped) chapter.titleTgt else chapter.titleSrc) ?: ""
-        val headerTitleTgt = (if (columnsSwapped) chapter.titleSrc else chapter.titleTgt) ?: ""
+        val headerTitleSrc = if (columnsSwapped) chapter.displayTitleTgt() else chapter.displayTitleSrc()
+        val headerTitleTgt = if (columnsSwapped) chapter.displayTitleSrc() else chapter.displayTitleTgt()
         for ((i, pair) in chapter.pairs.withIndex()) {
             add(
                 RenderRow(
@@ -122,7 +123,8 @@ fun BookPager(viewModel: ReaderViewModel) {
                     titleSrc = row.headerTitleSrc,
                     titleTgt = row.headerTitleTgt,
                     isDarkTheme = state.isDarkTheme,
-                    fontSizeSp = state.fontSizeSp
+                    fontSizeSp = state.fontSizeSp,
+                    expandMode = state.expandMode
                 )
             }
             PairRow(
@@ -132,6 +134,7 @@ fun BookPager(viewModel: ReaderViewModel) {
                 isZebra = row.idx % 2 == 1,
                 isDarkTheme = state.isDarkTheme,
                 fontSizeSp = state.fontSizeSp,
+                expandMode = state.expandMode,
                 onSwipeLeft = { viewModel.markAsReadAndNext(row.idx) },
                 onSwipeRight = { viewModel.markAsUnread(row.idx) }
             )

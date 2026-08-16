@@ -21,12 +21,22 @@ import kotlinx.coroutines.withContext
 
 data class ScrollRequest(val index: Int, val token: Int, val isSlow: Boolean = false)
 
+/**
+ * Single-column "expand" feature. NONE = normal two-column view. AWAITING_SIDE_TAP = the user
+ * pressed the toolbar expand button and now needs to tap the left or right half of the content
+ * area to say which column should take over the full width. SRC/TGT = that column is currently
+ * expanded to full width; pressing the toolbar button again (or from AWAITING_SIDE_TAP) returns
+ * to NONE.
+ */
+enum class ExpandMode { NONE, AWAITING_SIDE_TAP, SRC, TGT }
+
 data class ReaderUiState(
     val book: Book? = null,
     val currentPairIndex: Int = 0,
     val fontSizeSp: Int = 15,
     val isDarkTheme: Boolean = true,
     val columnsSwapped: Boolean = false,
+    val expandMode: ExpandMode = ExpandMode.NONE,
     val readPairs: Set<Int> = emptySet(),
     val fileHash: String = "",
     val fileName: String = "",
@@ -52,7 +62,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             if (lastUri != null) {
                 loadBook(Uri.parse(lastUri))
             } else {
-                loadBundledBook("aligned_pairs_book.json")
+                loadBundledBook("nested_sample.json")
             }
         }
     }
@@ -221,9 +231,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val chapters = _state.value.book?.chapters ?: return emptyList()
         val result = mutableListOf<Int>()
         var acc = 0
+        val swapped = _state.value.columnsSwapped
         for (ch in chapters) {
-            val title = if (_state.value.columnsSwapped) ch.titleTgt else ch.titleSrc
-            if (!title.isNullOrBlank()) result.add(acc)
+            val title = if (swapped) ch.displayTitleTgt() else ch.displayTitleSrc()
+            if (title.isNotBlank() && title != "—") result.add(acc)
             acc += ch.pairs.size
         }
         return result
@@ -243,6 +254,25 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun toggleColumns() {
         _state.update { it.copy(columnsSwapped = !it.columnsSwapped) }
         viewModelScope.launch { prefs.saveColumnsSwapped(_state.value.fileHash, _state.value.columnsSwapped) }
+    }
+
+    /**
+     * Toolbar expand button. From NONE, arms the "pick a side" mode. From AWAITING_SIDE_TAP
+     * (armed but no side chosen yet) or from an already-expanded column, it just cancels back
+     * to the normal two-column view — so the same button always works to return.
+     */
+    fun toggleExpandMode() {
+        _state.update {
+            it.copy(
+                expandMode = if (it.expandMode == ExpandMode.NONE) ExpandMode.AWAITING_SIDE_TAP else ExpandMode.NONE
+            )
+        }
+    }
+
+    /** Called when the user taps the left or right half of the content area while armed. */
+    fun expandColumn(mode: ExpandMode) {
+        if (_state.value.expandMode != ExpandMode.AWAITING_SIDE_TAP) return
+        _state.update { it.copy(expandMode = mode) }
     }
 
     fun dismissError() { _state.update { it.copy(error = null) } }

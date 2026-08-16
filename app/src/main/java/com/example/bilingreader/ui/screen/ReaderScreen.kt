@@ -3,6 +3,7 @@ package com.example.bilingreader.ui.screen
 import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,12 +20,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Menu
@@ -70,6 +77,7 @@ fun ReaderScreen(
     val totalPairs = state.book?.totalPairs ?: 0
     val bgColor = if (state.isDarkTheme) Color(0xFF1A1E24) else Color(0xFFF4F6F8)
     val contentColor = if (state.isDarkTheme) Color(0xFFCCCCCC) else Color(0xFF222222)
+    val accentColor = Color(0xFF4C9AFF)
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -139,6 +147,14 @@ fun ReaderScreen(
                             tint = contentColor
                         )
                     }
+                    IconButton(onClick = { viewModel.toggleExpandMode() }, modifier = Modifier.height(32.dp)) {
+                        Icon(
+                            if (state.expandMode == ExpandMode.NONE) Icons.Default.Fullscreen else Icons.Default.FullscreenExit,
+                            if (state.expandMode == ExpandMode.NONE) "Expand a column" else "Return to two columns",
+                            modifier = Modifier.height(18.dp),
+                            tint = if (state.expandMode == ExpandMode.AWAITING_SIDE_TAP) accentColor else contentColor
+                        )
+                    }
                     IconButton(onClick = { viewModel.setFontSize(state.fontSizeSp - 1) }, modifier = Modifier.height(32.dp)) {
                         Icon(
                             Icons.Default.Remove,
@@ -184,6 +200,50 @@ fun ReaderScreen(
                 BookPager(viewModel = viewModel)
             } else {
                 Text("Open a JSON file to start reading", modifier = Modifier.padding(32.dp))
+            }
+
+            // Armed by the toolbar expand button: tap the left or right half to say which
+            // column should take over the full width. A translucent overlay with a hint on
+            // each half makes the pending choice visible instead of a mysterious dead zone.
+            if (state.expandMode == ExpandMode.AWAITING_SIDE_TAP) {
+                Row(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .background(accentColor.copy(alpha = 0.12f))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { viewModel.expandColumn(ExpandMode.SRC) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.KeyboardArrowLeft,
+                            "Expand left column",
+                            tint = accentColor,
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .background(accentColor.copy(alpha = 0.05f))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { viewModel.expandColumn(ExpandMode.TGT) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.KeyboardArrowRight,
+                            "Expand right column",
+                            tint = accentColor,
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+                }
             }
         }
 

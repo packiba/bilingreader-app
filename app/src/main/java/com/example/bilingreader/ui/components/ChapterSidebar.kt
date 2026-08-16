@@ -58,8 +58,9 @@ fun ChapterSidebar(
             buildList {
                 var acc = 0
                 for (ch in book.chapters) {
-                    val title = if (columnsSwapped) ch.titleTgt else ch.titleSrc
-                    if (!title.isNullOrBlank()) {
+                    // Prefer hierarchical path title when the book was loaded from nested JSON
+                    val title = if (columnsSwapped) ch.displayTitleTgt() else ch.displayTitleSrc()
+                    if (title.isNotBlank() && title != "—") {
                         add(ChapterEntry(title = title, startIdx = acc))
                     }
                     acc += ch.pairs.size

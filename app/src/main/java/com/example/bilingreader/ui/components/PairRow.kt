@@ -18,6 +18,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.bilingreader.ui.screen.ExpandMode
 
 @Composable
 fun PairRow(
@@ -27,6 +28,7 @@ fun PairRow(
     isZebra: Boolean,
     isDarkTheme: Boolean,
     fontSizeSp: Int,
+    expandMode: ExpandMode = ExpandMode.NONE,
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit
 ) {
@@ -58,28 +60,46 @@ fun PairRow(
                 .fillMaxWidth()
                 .background(zebraBg)
         ) {
-            TwoColumnTextRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                dividerColor = dividerColor,
-                left = {
-                    Text(
-                        text = srcText,
-                        color = textColor,
-                        fontSize = fontSizeSp.sp,
-                        modifier = Modifier.padding(end = 6.dp)
-                    )
-                },
-                right = {
-                    Text(
-                        text = tgtText,
-                        color = textColor,
-                        fontSize = fontSizeSp.sp,
-                        modifier = Modifier.padding(start = 6.dp)
-                    )
-                }
-            )
+            when (expandMode) {
+                ExpandMode.SRC -> Text(
+                    text = srcText,
+                    color = textColor,
+                    fontSize = fontSizeSp.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 4.dp)
+                )
+                ExpandMode.TGT -> Text(
+                    text = tgtText,
+                    color = textColor,
+                    fontSize = fontSizeSp.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 4.dp)
+                )
+                else -> TwoColumnTextRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                    dividerColor = dividerColor,
+                    left = {
+                        Text(
+                            text = srcText,
+                            color = textColor,
+                            fontSize = fontSizeSp.sp,
+                            modifier = Modifier.padding(end = 6.dp)
+                        )
+                    },
+                    right = {
+                        Text(
+                            text = tgtText,
+                            color = textColor,
+                            fontSize = fontSizeSp.sp,
+                            modifier = Modifier.padding(start = 6.dp)
+                        )
+                    }
+                )
+            }
         }
     }
 }

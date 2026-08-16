@@ -16,13 +16,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.bilingreader.ui.screen.ExpandMode
 
 @Composable
 fun ChapterHeader(
     titleSrc: String,
     titleTgt: String,
     isDarkTheme: Boolean,
-    fontSizeSp: Int
+    fontSizeSp: Int,
+    expandMode: ExpandMode = ExpandMode.NONE
 ) {
     val bgColor = if (isDarkTheme) Color(0xFF2D333B) else Color(0xFFEBEDF0)
     val textColor = if (isDarkTheme) Color(0xFFADBAC7) else Color(0xFF24292F)
@@ -33,41 +35,53 @@ fun ChapterHeader(
             .fillMaxWidth()
             .background(bgColor)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(IntrinsicSize.Min)
-                .padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp)
-        ) {
-            // Left column
+        if (expandMode == ExpandMode.SRC || expandMode == ExpandMode.TGT) {
             Text(
-                text = titleSrc,
+                text = if (expandMode == ExpandMode.SRC) titleSrc else titleTgt,
                 color = textColor,
                 fontSize = headerFontSize,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 6.dp)
+                    .fillMaxWidth()
+                    .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp)
             )
-
-            // Divider
-            Box(
+        } else {
+            Row(
                 modifier = Modifier
-                    .width(0.5.dp)
-                    .fillMaxHeight()
-                    .background(if (isDarkTheme) Color(0x33FFFFFF) else Color(0x33000000))
-            )
+                    .fillMaxWidth()
+                    .height(IntrinsicSize.Min)
+                    .padding(start = 14.dp, end = 4.dp, top = 12.dp, bottom = 12.dp)
+            ) {
+                // Left column
+                Text(
+                    text = titleSrc,
+                    color = textColor,
+                    fontSize = headerFontSize,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 6.dp)
+                )
 
-            // Right column
-            Text(
-                text = titleTgt,
-                color = textColor,
-                fontSize = headerFontSize,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 6.dp)
-            )
+                // Divider
+                Box(
+                    modifier = Modifier
+                        .width(0.5.dp)
+                        .fillMaxHeight()
+                        .background(if (isDarkTheme) Color(0x33FFFFFF) else Color(0x33000000))
+                )
+
+                // Right column
+                Text(
+                    text = titleTgt,
+                    color = textColor,
+                    fontSize = headerFontSize,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 6.dp)
+                )
+            }
         }
     }
 }

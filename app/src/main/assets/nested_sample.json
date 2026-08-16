@@ -1,0 +1,65 @@
+[
+  {
+    "type": "book",
+    "title_src": "Часть I",
+    "title_tgt": "Част I",
+    "children": [
+      {
+        "type": "chapter",
+        "chapter_num": 1,
+        "title_src": "Книга 1",
+        "title_tgt": "Книга 1",
+        "children": [
+          {
+            "type": "subchapter",
+            "subchapter_num": 1,
+            "title_src": "Глава 1",
+            "title_tgt": "Глава 1",
+            "pairs": [
+              {
+                "src": "Первое предложение на русском.",
+                "tgt": "Първото изречение на български."
+              },
+              {
+                "src": "Второе предложение.",
+                "tgt": "Второто изречение."
+              }
+            ]
+          },
+          {
+            "type": "subchapter",
+            "subchapter_num": 2,
+            "title_src": "Глава 2",
+            "title_tgt": "Глава 2",
+            "pairs": [
+              {
+                "src": "Текст главы 2.",
+                "tgt": "Текст на глава 2."
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "chapter",
+        "chapter_num": 2,
+        "title_src": "Книга 2",
+        "title_tgt": "Книга 2",
+        "children": [
+          {
+            "type": "subchapter",
+            "subchapter_num": 1,
+            "title_src": "Глава 1",
+            "title_tgt": "Глава 1",
+            "pairs": [
+              {
+                "src": "Начало книги 2.",
+                "tgt": "Начало на книга 2."
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
