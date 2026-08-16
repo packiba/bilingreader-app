@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.bilingreader.data.datastore.ReaderPreferences
 import com.example.bilingreader.data.model.Book
 import com.example.bilingreader.data.repository.BookRepository
+import com.example.bilingreader.tts.TtsPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -38,6 +39,7 @@ data class ReaderUiState(
     val columnsSwapped: Boolean = false,
     val expandMode: ExpandMode = ExpandMode.NONE,
     val chapterStarts: List<Int> = emptyList(),
+    val speakingPairIndex: Int? = null,
     val readPairs: Set<Int> = emptySet(),
     val fileHash: String = "",
     val fileName: String = "",
@@ -49,6 +51,18 @@ data class ReaderUiState(
 class ReaderViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = BookRepository(application)
     private val prefs = ReaderPreferences(application)
+    private val tts = TtsPlayer(application).apply {
+        onDone = { _state.update { it.copy(speakingPairIndex = null) } }
+        onError = { _state.update { it.copy(speakingPairIndex = null) } }
+        onMissingVoice = {
+            _state.update {
+                it.copy(
+                    speakingPairIndex = null,
+                    error = "Болгарский голос для чтения вслух не установлен. Настройки → Языки и ввод → Синтез речи → Google → Установить голосовые данные → Bulgarian."
+                )
+            }
+        }
+    }
     private val _state = MutableStateFlow(ReaderUiState())
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
 
@@ -198,6 +212,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
      */
     override fun onCleared() {
         super.onCleared()
+        tts.shutdown()
         if (persistProgressJob?.isActive == true) {
             val snapshot = _state.value
             CoroutineScope(Dispatchers.IO).launch {
@@ -282,4 +297,16 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun dismissError() { _state.update { it.copy(error = null) } }
+
+    /** Speaker icon on a row. Tap again on the same row to stop; tapping a different row while
+     * one is already speaking flushes to the new text. */
+    fun toggleSpeak(index: Int, bulgarianText: String) {
+        if (_state.value.speakingPairIndex == index) {
+            tts.stop()
+            _state.update { it.copy(speakingPairIndex = null) }
+            return
+        }
+        _state.update { it.copy(speakingPairIndex = index) }
+        tts.speak(bulgarianText)
+    }
 }

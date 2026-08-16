@@ -5,12 +5,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Layout
@@ -29,6 +36,8 @@ fun PairRow(
     isDarkTheme: Boolean,
     fontSizeSp: Int,
     expandMode: ExpandMode = ExpandMode.NONE,
+    isSpeaking: Boolean = false,
+    onSpeakToggle: () -> Unit = {},
     onSwipeLeft: () -> Unit,
     onSwipeRight: () -> Unit
 ) {
@@ -39,6 +48,9 @@ fun PairRow(
         else (if (isZebra) Color(0xFFFFFFFF) else Color(0xFFF4F6F8))
     val textColor by animateColorAsState(if (isRead) dimmedColor else activeColor, label = "textColor")
     val dividerColor = if (isDarkTheme) Color(0x33FFFFFF) else Color(0x33000000)
+    val speakerColor = if (isSpeaking) Color(0xFF4C9AFF) else dimmedColor
+    // Reserve room on the right so the speaker icon never sits on top of text.
+    val textEndPadding = 34.dp
 
     val dismissState = rememberSwipeToDismissBoxState(
         confirmValueChange = {
@@ -67,7 +79,7 @@ fun PairRow(
                     fontSize = fontSizeSp.sp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 4.dp)
+                        .padding(start = 14.dp, end = textEndPadding, top = 4.dp, bottom = 4.dp)
                 )
                 ExpandMode.TGT -> Text(
                     text = tgtText,
@@ -75,12 +87,12 @@ fun PairRow(
                     fontSize = fontSizeSp.sp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 14.dp, end = 14.dp, top = 4.dp, bottom = 4.dp)
+                        .padding(start = 14.dp, end = textEndPadding, top = 4.dp, bottom = 4.dp)
                 )
                 else -> TwoColumnTextRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 14.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                        .padding(start = 14.dp, end = textEndPadding, top = 4.dp, bottom = 4.dp),
                     dividerColor = dividerColor,
                     left = {
                         Text(
@@ -98,6 +110,23 @@ fun PairRow(
                             modifier = Modifier.padding(start = 6.dp)
                         )
                     }
+                )
+            }
+
+            // Always reads the Bulgarian half of this pair aloud, regardless of which side it's
+            // displayed on (or whether that column is currently the only one shown).
+            IconButton(
+                onClick = onSpeakToggle,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(28.dp)
+                    .padding(top = 2.dp, end = 2.dp)
+            ) {
+                Icon(
+                    if (isSpeaking) Icons.Default.Stop else Icons.Default.VolumeUp,
+                    if (isSpeaking) "Остановить чтение" else "Прочитать вслух по-болгарски",
+                    tint = speakerColor,
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
