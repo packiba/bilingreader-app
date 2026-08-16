@@ -296,6 +296,7 @@ fun ReaderScreen(
                         currentPage = state.currentPairIndex,
                         totalPages = totalPairs,
                         enabled = showToolbar,
+                        chapterStarts = state.chapterStarts,
                         onPageChange = { viewModel.setCurrentPairIndex(it) }
                     )
                 }

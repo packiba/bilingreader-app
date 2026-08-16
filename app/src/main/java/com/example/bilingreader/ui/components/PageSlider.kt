@@ -1,5 +1,6 @@
 package com.example.bilingreader.ui.components
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -32,6 +34,7 @@ fun PageSlider(
     currentPage: Int,
     totalPages: Int,
     enabled: Boolean = true,
+    chapterStarts: List<Int> = emptyList(),
     onPageChange: (Int) -> Unit
 ) {
     // While the finger is down we track the drag position purely as local UI state and only
@@ -82,13 +85,38 @@ fun PageSlider(
                 }
             },
             track = { sliderState ->
-                SliderDefaults.Track(
-                    sliderState = sliderState,
-                    modifier = Modifier.height(2.dp),
-                    thumbTrackGapSize = 0.dp,
-                    trackInsideCornerSize = 1.dp,
-                    drawStopIndicator = null
-                )
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    SliderDefaults.Track(
+                        sliderState = sliderState,
+                        modifier = Modifier.fillMaxWidth().height(2.dp),
+                        thumbTrackGapSize = 0.dp,
+                        trackInsideCornerSize = 1.dp,
+                        drawStopIndicator = null
+                    )
+                    // Chapter-start tick marks, drawn over the track at the fractional position
+                    // each chapter's first pair sits at within the full page range.
+                    if (chapterStarts.isNotEmpty() && totalPages > 1) {
+                        val tickColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                        val range = (totalPages - 1).toFloat()
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .align(Alignment.Center)
+                        ) {
+                            for (start in chapterStarts) {
+                                if (start <= 0) continue // book start already marked by the track's own edge
+                                val x = (start / range) * size.width
+                                drawLine(
+                                    color = tickColor,
+                                    start = Offset(x, 0f),
+                                    end = Offset(x, size.height),
+                                    strokeWidth = 1.5.dp.toPx()
+                                )
+                            }
+                        }
+                    }
+                }
             }
         )
     }

@@ -37,6 +37,7 @@ data class ReaderUiState(
     val isDarkTheme: Boolean = true,
     val columnsSwapped: Boolean = false,
     val expandMode: ExpandMode = ExpandMode.NONE,
+    val chapterStarts: List<Int> = emptyList(),
     val readPairs: Set<Int> = emptySet(),
     val fileHash: String = "",
     val fileName: String = "",
@@ -81,6 +82,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     fontSizeSp = settings.fontSize,
                     isDarkTheme = settings.darkTheme,
                     columnsSwapped = settings.columnsSwapped,
+                    chapterStarts = computeChapterStarts(book, settings.columnsSwapped),
                     readPairs = settings.readPairs,
                     currentPairIndex = settings.lastReadPair.coerceIn(0, (book.totalPairs - 1).coerceAtLeast(0)),
                     isLoading = false
@@ -109,6 +111,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         fontSizeSp = settings.fontSize,
                         isDarkTheme = settings.darkTheme,
                         columnsSwapped = settings.columnsSwapped,
+                        chapterStarts = computeChapterStarts(book, settings.columnsSwapped),
                         readPairs = settings.readPairs,
                         currentPairIndex = settings.lastReadPair.coerceIn(0, (total - 1).coerceAtLeast(0)),
                         isLoading = false
@@ -204,7 +207,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun goToPrevChapter() {
-        val starts = chapterStarts()
+        val starts = _state.value.chapterStarts
         if (starts.isEmpty()) return
         val current = _state.value.currentPairIndex
         val curStart = starts.lastOrNull { it <= current }
@@ -218,7 +221,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun goToNextChapter() {
-        val starts = chapterStarts()
+        val starts = _state.value.chapterStarts
         if (starts.isEmpty()) return
         val current = _state.value.currentPairIndex
         val curStart = starts.lastOrNull { it <= current }
@@ -227,11 +230,11 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         if (next != current) setCurrentPairIndex(next)
     }
 
-    private fun chapterStarts(): List<Int> {
-        val chapters = _state.value.book?.chapters ?: return emptyList()
+    /** Global pair-index of the first pair of every chapter that has a real (non-blank) title. */
+    private fun computeChapterStarts(book: Book?, swapped: Boolean): List<Int> {
+        val chapters = book?.chapters ?: return emptyList()
         val result = mutableListOf<Int>()
         var acc = 0
-        val swapped = _state.value.columnsSwapped
         for (ch in chapters) {
             val title = if (swapped) ch.displayTitleTgt() else ch.displayTitleSrc()
             if (title.isNotBlank() && title != "—") result.add(acc)
@@ -252,7 +255,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun toggleColumns() {
-        _state.update { it.copy(columnsSwapped = !it.columnsSwapped) }
+        _state.update {
+            val swapped = !it.columnsSwapped
+            it.copy(columnsSwapped = swapped, chapterStarts = computeChapterStarts(it.book, swapped))
+        }
         viewModelScope.launch { prefs.saveColumnsSwapped(_state.value.fileHash, _state.value.columnsSwapped) }
     }
 
