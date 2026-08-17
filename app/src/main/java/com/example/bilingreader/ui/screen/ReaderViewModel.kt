@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.bilingreader.data.datastore.ReaderPreferences
 import com.example.bilingreader.data.model.Book
 import com.example.bilingreader.data.repository.BookRepository
+import com.example.bilingreader.translate.TranslatorHelper
 import com.example.bilingreader.tts.TtsPlayer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -65,6 +66,12 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
     private val _state = MutableStateFlow(ReaderUiState())
     val state: StateFlow<ReaderUiState> = _state.asStateFlow()
+
+    private val translator = TranslatorHelper()
+
+    /** Word-tap dictionary popup: translates in-app, no browser hand-off. */
+    suspend fun translateWord(word: String, isBulgarian: Boolean): String =
+        translator.translate(word, isBulgarian)
 
     // Reading position + read-set are saved together, debounced — see schedulePersistProgress().
     private var persistProgressJob: Job? = null
@@ -137,10 +144,13 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /** Marks this pair and every earlier pair as read. */
     fun markAsRead(pairIndex: Int) {
-        if (pairIndex in _state.value.readPairs) return
+        val clamped = pairIndex.coerceIn(0, (totalPairs() - 1).coerceAtLeast(0))
+        val readThrough = (0..clamped).toSet()
         _state.update {
-            it.copy(readPairs = it.readPairs + pairIndex)
+            val merged = it.readPairs + readThrough
+            if (merged == it.readPairs) it else it.copy(readPairs = merged)
         }
         schedulePersistProgress()
     }
@@ -213,6 +223,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     override fun onCleared() {
         super.onCleared()
         tts.shutdown()
+        translator.close()
         if (persistProgressJob?.isActive == true) {
             val snapshot = _state.value
             CoroutineScope(Dispatchers.IO).launch {

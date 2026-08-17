@@ -37,7 +37,8 @@ private data class RenderRow(
     val headerTitleTgt: String,
     val srcText: String,
     val tgtText: String,
-    val bulgarianText: String
+    val bulgarianText: String,
+    val isSrcBulgarian: Boolean
 )
 
 private fun buildRenderRows(book: Book, columnsSwapped: Boolean): List<RenderRow> = buildList {
@@ -62,7 +63,8 @@ private fun buildRenderRows(book: Book, columnsSwapped: Boolean): List<RenderRow
                     // Always the book's own "tgt" field (Bulgarian in this app's data), regardless
                     // of the src/tgt column swap — the read-aloud button should always speak
                     // Bulgarian no matter which visual side it's displayed on.
-                    bulgarianText = pair.tgt
+                    bulgarianText = pair.tgt,
+                    isSrcBulgarian = columnsSwapped
                 )
             )
             globalIdx++
@@ -142,6 +144,8 @@ fun BookPager(viewModel: ReaderViewModel) {
                 expandMode = state.expandMode,
                 isSpeaking = state.speakingPairIndex == row.idx,
                 onSpeakToggle = { viewModel.toggleSpeak(row.idx, row.bulgarianText) },
+                isSrcBulgarian = row.isSrcBulgarian,
+                onTranslate = { word, isBulgarian -> viewModel.translateWord(word, isBulgarian) },
                 onSwipeLeft = { viewModel.markAsReadAndNext(row.idx) },
                 onSwipeRight = { viewModel.markAsUnread(row.idx) }
             )

@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Only needed the first time a language model downloads for offline translation
+         (ML Kit Translate); after that the model is cached and works without network. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:name=".ReaderApplication"
         android:allowBackup="true"
@@ -11,6 +15,19 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.BilingReader">
+
+        <activity
+            android:name=".translate.TranslateSelectionActivity"
+            android:exported="true"
+            android:label="Перевод"
+            android:theme="@style/Theme.BilingReader"
+            android:screenOrientation="userLandscape">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
 
         <activity
             android:name=".MainActivity"
