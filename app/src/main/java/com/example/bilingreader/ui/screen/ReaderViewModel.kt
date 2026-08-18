@@ -41,24 +41,40 @@ data class ReaderUiState(
     val expandMode: ExpandMode = ExpandMode.NONE,
     val chapterStarts: List<Int> = emptyList(),
     val speakingPairIndex: Int? = null,
-    val readPairs: Set<Int> = emptySet(),
+    val isContinuousReading: Boolean = false,
+    // Pairs 0..readThrough are read, except any index listed in readExceptions. See the note on
+    // ReaderPreferences.Settings.readThrough for why this replaced a plain Set<Int> of every
+    // read index — that shape made every single swipe-to-mark-read allocate and union a
+    // range-sized set (thousands of entries for a long book), on top of costing the same on
+    // every debounced persist.
+    val readThrough: Int = -1,
+    val readExceptions: Set<Int> = emptySet(),
     val fileHash: String = "",
     val fileName: String = "",
     val isLoading: Boolean = false,
     val error: String? = null,
     val scrollRequest: ScrollRequest? = null
-)
+) {
+    fun isRead(index: Int): Boolean = index <= readThrough && index !in readExceptions
+}
 
 class ReaderViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = BookRepository(application)
     private val prefs = ReaderPreferences(application)
     private val tts = TtsPlayer(application).apply {
-        onDone = { _state.update { it.copy(speakingPairIndex = null) } }
-        onError = { _state.update { it.copy(speakingPairIndex = null) } }
+        onDone = {
+            if (_state.value.isContinuousReading) {
+                advanceContinuousReading()
+            } else {
+                _state.update { it.copy(speakingPairIndex = null) }
+            }
+        }
+        onError = { _state.update { it.copy(speakingPairIndex = null, isContinuousReading = false) } }
         onMissingVoice = {
             _state.update {
                 it.copy(
                     speakingPairIndex = null,
+                    isContinuousReading = false,
                     error = "Болгарский голос для чтения вслух не установлен. Настройки → Языки и ввод → Синтез речи → Google → Установить голосовые данные → Bulgarian."
                 )
             }
@@ -104,7 +120,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                     isDarkTheme = settings.darkTheme,
                     columnsSwapped = settings.columnsSwapped,
                     chapterStarts = computeChapterStarts(book, settings.columnsSwapped),
-                    readPairs = settings.readPairs,
+                    readThrough = settings.readThrough,
+                    readExceptions = settings.readExceptions,
                     currentPairIndex = settings.lastReadPair.coerceIn(0, (book.totalPairs - 1).coerceAtLeast(0)),
                     isLoading = false
                 )
@@ -133,7 +150,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         isDarkTheme = settings.darkTheme,
                         columnsSwapped = settings.columnsSwapped,
                         chapterStarts = computeChapterStarts(book, settings.columnsSwapped),
-                        readPairs = settings.readPairs,
+                        readThrough = settings.readThrough,
+                        readExceptions = settings.readExceptions,
                         currentPairIndex = settings.lastReadPair.coerceIn(0, (total - 1).coerceAtLeast(0)),
                         isLoading = false
                     )
@@ -144,22 +162,28 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    /** Marks this pair and every earlier pair as read. */
+    /**
+     * Marks this pair and every earlier pair as read. Previously this unioned in a freshly
+     * allocated `(0..clamped).toSet()` range (up to thousands of boxed Ints) on every single
+     * swipe. Now it's just a high-water-mark bump plus clearing any exceptions that range now
+     * covers — O(number of exceptions), not O(pairIndex).
+     */
     fun markAsRead(pairIndex: Int) {
         val clamped = pairIndex.coerceIn(0, (totalPairs() - 1).coerceAtLeast(0))
-        val readThrough = (0..clamped).toSet()
         _state.update {
-            val merged = it.readPairs + readThrough
-            if (merged == it.readPairs) it else it.copy(readPairs = merged)
+            if (clamped <= it.readThrough && clamped !in it.readExceptions) return@update it
+            it.copy(
+                readThrough = maxOf(it.readThrough, clamped),
+                readExceptions = it.readExceptions.filterTo(mutableSetOf()) { idx -> idx > clamped }
+            )
         }
         schedulePersistProgress()
     }
 
     fun markAsUnread(pairIndex: Int) {
-        if (pairIndex !in _state.value.readPairs) return
-        _state.update {
-            it.copy(readPairs = it.readPairs - pairIndex)
-        }
+        val current = _state.value
+        if (!current.isRead(pairIndex)) return
+        _state.update { it.copy(readExceptions = it.readExceptions + pairIndex) }
         schedulePersistProgress()
     }
 
@@ -211,7 +235,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         persistProgressJob = viewModelScope.launch {
             delay(500)
             val snapshot = _state.value
-            prefs.saveProgress(snapshot.fileHash, snapshot.currentPairIndex, snapshot.readPairs)
+            prefs.saveProgress(snapshot.fileHash, snapshot.currentPairIndex, snapshot.readThrough, snapshot.readExceptions)
         }
     }
 
@@ -227,7 +251,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         if (persistProgressJob?.isActive == true) {
             val snapshot = _state.value
             CoroutineScope(Dispatchers.IO).launch {
-                prefs.saveProgress(snapshot.fileHash, snapshot.currentPairIndex, snapshot.readPairs)
+                prefs.saveProgress(snapshot.fileHash, snapshot.currentPairIndex, snapshot.readThrough, snapshot.readExceptions)
             }
         }
     }
@@ -310,14 +334,39 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun dismissError() { _state.update { it.copy(error = null) } }
 
     /** Speaker icon on a row. Tap again on the same row to stop; tapping a different row while
-     * one is already speaking flushes to the new text. */
+     * one is already speaking flushes to the new text. A plain tap always plays a single line —
+     * it also cancels continuous reading if that was running. */
     fun toggleSpeak(index: Int, bulgarianText: String) {
         if (_state.value.speakingPairIndex == index) {
             tts.stop()
-            _state.update { it.copy(speakingPairIndex = null) }
+            _state.update { it.copy(speakingPairIndex = null, isContinuousReading = false) }
             return
         }
-        _state.update { it.copy(speakingPairIndex = index) }
+        _state.update { it.copy(speakingPairIndex = index, isContinuousReading = false) }
         tts.speak(bulgarianText)
+    }
+
+    /**
+     * Long-press on the speaker icon: starts reading aloud from this row and keeps going into
+     * subsequent rows automatically (advanced from [advanceContinuousReading] as each line
+     * finishes), following along with a scroll so the currently-read row stays in view. Stops
+     * on a plain tap (see [toggleSpeak]), at the end of the book, or on TTS error.
+     */
+    fun startContinuousReading(index: Int, bulgarianText: String) {
+        _state.update { it.copy(isContinuousReading = true, speakingPairIndex = index) }
+        tts.speak(bulgarianText)
+    }
+
+    private fun advanceContinuousReading() {
+        val current = _state.value
+        val nextIdx = (current.speakingPairIndex ?: -1) + 1
+        val nextText = current.book?.bulgarianPairs?.getOrNull(nextIdx)
+        if (nextText == null) {
+            _state.update { it.copy(isContinuousReading = false, speakingPairIndex = null) }
+            return
+        }
+        _state.update { it.copy(speakingPairIndex = nextIdx) }
+        setCurrentPairIndex(nextIdx)
+        tts.speak(nextText)
     }
 }

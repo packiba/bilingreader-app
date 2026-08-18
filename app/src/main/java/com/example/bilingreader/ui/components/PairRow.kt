@@ -1,13 +1,18 @@
 package com.example.bilingreader.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -15,7 +20,6 @@ import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
@@ -29,6 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -54,6 +59,16 @@ import com.example.bilingreader.ui.screen.ExpandMode
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
+/**
+ * Plain (non-`State`) holder for the row's last-known position in window. It only needs to be
+ * *read* at the moment a translation popup opens; writing to it must never trigger recomposition
+ * of the row itself. A `mutableStateOf` here previously caused every visible row to recompose on
+ * every single layout pass — i.e. every scroll frame — since [onGloballyPositioned] fires on
+ * every position change while the list scrolls.
+ */
+private class RowOffsetHolder(var value: IntOffset)
+
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun PairRow(
     srcText: String,
@@ -64,7 +79,9 @@ fun PairRow(
     fontSizeSp: Int,
     expandMode: ExpandMode = ExpandMode.NONE,
     isSpeaking: Boolean = false,
+    isContinuousReading: Boolean = false,
     onSpeakToggle: () -> Unit = {},
+    onSpeakLongPress: () -> Unit = {},
     isSrcBulgarian: Boolean = false,
     onTranslate: suspend (word: String, isBulgarian: Boolean) -> String = { _, _ -> "" },
     onSwipeLeft: () -> Unit,
@@ -77,14 +94,20 @@ fun PairRow(
         else (if (isZebra) Color(0xFFFFFFFF) else Color(0xFFF4F6F8))
     val textColor by animateColorAsState(if (isRead) dimmedColor else activeColor, label = "textColor")
     val dividerColor = if (isDarkTheme) Color(0x33FFFFFF) else Color(0x33000000)
-    val speakerColor = if (isSpeaking) Color(0xFF4C9AFF) else dimmedColor
+    // Continuous reading gets its own accent so it's visually obvious the mic will keep going
+    // into the next lines on its own, instead of stopping after this one.
+    val speakerColor = when {
+        isSpeaking && isContinuousReading -> Color(0xFF34D399)
+        isSpeaking -> Color(0xFF4C9AFF)
+        else -> dimmedColor
+    }
     // Reserve room on the right so the speaker icon never sits on top of text.
     val textEndPadding = 34.dp
 
     val scope = rememberCoroutineScope()
     val clipboardManager = LocalClipboardManager.current
     val selectionPopupState = remember { mutableStateOf<TranslationPopupState?>(null) }
-    var rowOffset by remember { mutableStateOf(IntOffset.Zero) }
+    val rowOffsetHolder = remember { RowOffsetHolder(IntOffset.Zero) }
     
     @Composable
     fun SelectionToolbarProvider(isBulgarian: Boolean, content: @Composable () -> Unit) {
@@ -105,7 +128,7 @@ fun PairRow(
             // Using a Box here to ensure the toolbar content is correctly layered
             Box {
                 content()
-                toolbar.Content(isDarkTheme = isDarkTheme, parentGlobalOffset = rowOffset)
+                toolbar.Content(isDarkTheme = isDarkTheme, parentGlobalOffset = rowOffsetHolder.value)
             }
         }
     }
@@ -126,7 +149,7 @@ fun PairRow(
             .fillMaxWidth()
             .onGloballyPositioned { coordinates ->
                 val pos = coordinates.positionInWindow()
-                rowOffset = IntOffset(pos.x.roundToInt(), pos.y.roundToInt())
+                rowOffsetHolder.value = IntOffset(pos.x.roundToInt(), pos.y.roundToInt())
             },
         backgroundContent = {},
         enableDismissFromStartToEnd = true,
@@ -207,17 +230,26 @@ fun PairRow(
             }
 
             // Always reads the Bulgarian half of this pair aloud, regardless of which side it's
-            // displayed on (or whether that column is currently the only one shown).
-            IconButton(
-                onClick = onSpeakToggle,
+            // displayed on (or whether that column is currently the only one shown). A plain tap
+            // reads just this line; a long-press starts continuous reading that keeps advancing
+            // into the following lines on its own (see ReaderViewModel.startContinuousReading).
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .size(28.dp)
                     .padding(top = 2.dp, end = 2.dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = LocalIndication.current,
+                        onClick = onSpeakToggle,
+                        onLongClick = onSpeakLongPress
+                    ),
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
                     if (isSpeaking) Icons.Default.Stop else Icons.AutoMirrored.Filled.VolumeUp,
-                    if (isSpeaking) "Остановить чтение" else "Прочитать вслух по-болгарски",
+                    if (isSpeaking) "Остановить чтение" else "Прочитать вслух по-болгарски (удержание — читать подряд)",
                     tint = speakerColor,
                     modifier = Modifier.size(16.dp)
                 )

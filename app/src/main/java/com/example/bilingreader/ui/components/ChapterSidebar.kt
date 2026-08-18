@@ -19,9 +19,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -140,12 +140,16 @@ fun ChapterSidebar(
                             .align(Alignment.CenterHorizontally)
                     )
 
-                    Column(
+                    // LazyColumn instead of a plain Column+verticalScroll: books with deeply
+                    // nested chapter trees can have hundreds of entries here, and a plain Column
+                    // composes every row immediately on every sidebar open instead of only the
+                    // visible ones.
+                    LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
+                            .weight(1f)
                     ) {
-                        chapters.forEachIndexed { ci, entry ->
+                        itemsIndexed(chapters, key = { _, entry -> entry.startIdx }) { ci, entry ->
                             val nextStart = chapters.getOrNull(ci + 1)?.startIdx ?: Int.MAX_VALUE
                             val isCurrent = currentPairIndex in entry.startIdx until nextStart
 

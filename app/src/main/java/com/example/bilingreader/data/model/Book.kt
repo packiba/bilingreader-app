@@ -73,4 +73,13 @@ data class Book(
     // interaction (each swipe, each scroll settle, each slider release) even though the book's
     // contents never change after it's loaded.
     val totalPairs: Int by lazy(LazyThreadSafetyMode.NONE) { chapters.sumOf { it.pairs.size } }
+
+    /**
+     * Flat, O(1)-indexable view of every pair's Bulgarian ("tgt") text, in the same global pair
+     * order used everywhere else in the reader (progress tracking, TTS continuous-reading
+     * auto-advance). Built once and cached, same rationale as [totalPairs].
+     */
+    val bulgarianPairs: List<String> by lazy(LazyThreadSafetyMode.NONE) {
+        chapters.flatMap { it.pairs }.map { it.tgt }
+    }
 }
