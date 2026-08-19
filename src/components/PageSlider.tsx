@@ -1,7 +1,9 @@
 import { useRef, useState } from 'react'
 import { useReader } from '../store/ReaderProvider'
 
-export default function PageSlider() {
+const clamp = (v: number, max: number) => Math.max(0, Math.min(v, max))
+
+export default function PageSlider({ onDragPreview }: { onDragPreview?: (index: number | null) => void }) {
   const { state, chapterStarts, setCurrentPair } = useReader()
   const [drag, setDrag] = useState(false)
   const [dragVal, setDragVal] = useState(0)
@@ -9,24 +11,29 @@ export default function PageSlider() {
 
   if (!state.book) return null
   const total = Math.max(state.book.totalPairs, 1)
-  const shown = drag ? dragVal : Math.max(0, Math.min(state.currentPair, total - 1))
+  const shown = drag ? dragVal : clamp(state.currentPair, total - 1)
   const pct = total > 1 ? (shown / (total - 1)) * 100 : 0
 
   const onPointerDown = () => {
     setDrag(true)
-    setDragVal(Math.max(0, Math.min(state.currentPair, total - 1)))
+    const v = clamp(state.currentPair, total - 1)
+    setDragVal(v)
+    onDragPreview?.(v)
   }
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setDragVal(Number(e.target.value))
+    const v = Number(e.target.value)
+    setDragVal(v)
+    onDragPreview?.(v)
   }
   const release = () => {
     if (!drag) return
     setDrag(false)
-    setCurrentPair(Math.max(0, Math.min(dragVal, total - 1)))
+    setCurrentPair(clamp(dragVal, total - 1))
+    onDragPreview?.(null)
   }
 
   return (
-    <div className="sliderrow">
+    <div className="slidertrack">
       <input
         ref={inputRef}
         type="range"
@@ -47,7 +54,6 @@ export default function PageSlider() {
         ))}
         <div className="thumb" style={{ left: `${pct}%` }} />
       </div>
-      <span className="count">{shown + 1} / {total}</span>
     </div>
   )
 }

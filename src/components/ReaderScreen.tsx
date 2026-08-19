@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { useReader } from '../store/ReaderProvider'
 import {
-  IconClose, IconCollapse, IconDropdown, IconDropup, IconExpand, IconMenu,
+  IconCollapse, IconDropdown, IconDropup, IconExpand, IconLibrary, IconMenu,
   IconMinus, IconMoon, IconNext, IconOpenFolder, IconPlus, IconPrev, IconSun, IconSwap
 } from './icons'
 import ReaderList from './ReaderList'
@@ -13,8 +13,11 @@ export default function ReaderScreen() {
   const { state, dismissError } = reader
   const [showToolbar, setShowToolbar] = useState(true)
   const [showSidebar, setShowSidebar] = useState(false)
+  const [preview, setPreview] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const touchStart = useRef<{ y: number } | null>(null)
+  const currentShown = preview ?? state.currentPair
+  const totalShown = state.book ? Math.max(state.book.totalPairs, 0) : 0
 
   const openFileBtn = (
     <>
@@ -61,8 +64,8 @@ export default function ReaderScreen() {
           <button className="iconbtn" title="Больше шрифт" onClick={() => reader.setFontSize(state.fontSize + 1)}>
             <IconPlus size={18} />
           </button>
-          <button className="iconbtn" title="Закрыть книгу" onClick={reader.closeBook}>
-            <IconClose size={18} />
+          <button className="iconbtn" title="Библиотека" onClick={reader.closeBook}>
+            <IconLibrary size={18} />
           </button>
         </div>
       )}
@@ -94,12 +97,13 @@ export default function ReaderScreen() {
           <button className="iconbtn" title="Свернуть/развернуть тулбар" onClick={() => setShowToolbar((v) => !v)}>
             {showToolbar ? <IconDropdown size={18} /> : <IconDropup size={18} />}
           </button>
+          <span className="count">{currentShown + 1} / {totalShown}</span>
           {showToolbar && (
             <button className="iconbtn" title="Предыдущая глава" onClick={reader.goToPrevChapter}>
               <IconPrev size={18} />
             </button>
           )}
-          <PageSlider />
+          <PageSlider onDragPreview={setPreview} />
           {showToolbar && (
             <button className="iconbtn" title="Следующая глава" onClick={reader.goToNextChapter}>
               <IconNext size={18} />
