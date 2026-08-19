@@ -14,6 +14,7 @@ export default function ReaderScreen() {
   const [showToolbar, setShowToolbar] = useState(true)
   const [showSidebar, setShowSidebar] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const touchStart = useRef<{ y: number } | null>(null)
 
   const openFileBtn = (
     <>
@@ -81,7 +82,15 @@ export default function ReaderScreen() {
       </div>
 
       {state.book && (
-        <div className="bottombar">
+        <div
+          className="bottombar"
+          onTouchStart={(e) => { touchStart.current = { y: e.touches[0]?.clientY ?? 0 } }}
+          onTouchEnd={(e) => {
+            const dy = (touchStart.current?.y ?? 0) - (e.changedTouches[0]?.clientY ?? 0)
+            touchStart.current = null
+            if (dy > 30) setShowSidebar(true)
+          }}
+        >
           <button className="iconbtn" title="Свернуть/развернуть тулбар" onClick={() => setShowToolbar((v) => !v)}>
             {showToolbar ? <IconDropdown size={18} /> : <IconDropup size={18} />}
           </button>
