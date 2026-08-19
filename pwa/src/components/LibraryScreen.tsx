@@ -14,7 +14,7 @@ export default function LibraryScreen() {
   }
 
   return (
-    <div className="app theme-dark">
+    <div className={`app ${state.dark ? 'theme-dark' : 'theme-light'}`}>
       <div className="lib">
         <h1>Библиотека</h1>
         <div className="grid">

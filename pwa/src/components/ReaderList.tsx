@@ -1,10 +1,25 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { VariableSizeList as List } from 'react-window'
 import type { ListOnItemsRenderedProps } from 'react-window'
 import { useReader } from '../store/ReaderProvider'
 import PairRow from './PairRow'
 
 const ESTIMATED_ROW = 120
+
+function ScrollOuter(props: Record<string, unknown>) {
+  const { children, style, onScroll, onWheel, ...rest } = props as {
+    children: React.ReactNode
+    style: React.CSSProperties
+    onScroll: (e: React.UIEvent) => void
+    onWheel?: (e: React.WheelEvent) => void
+    [k: string]: unknown
+  }
+  return (
+    <div style={style} onScroll={onScroll} onWheel={onWheel} data-scroll {...rest}>
+      {children}
+    </div>
+  )
+}
 
 export default function ReaderList() {
   const { rows, state, onUserScrolled } = useReader()
@@ -54,6 +69,17 @@ export default function ReaderList() {
     return heights ? heights[index] ?? ESTIMATED_ROW : ESTIMATED_ROW
   }, [heights])
 
+  const offsets = useMemo(() => {
+    if (!heights) return []
+    const o = new Array<number>(heights.length)
+    let acc = 0
+    for (let i = 0; i < heights.length; i++) {
+      o[i] = acc
+      acc += heights[i] ?? ESTIMATED_ROW
+    }
+    return o
+  }, [heights])
+
   // Navigate on scrollRequest; defer until heights are measured
   useEffect(() => {
     const req = state.scrollRequest
@@ -64,8 +90,20 @@ export default function ReaderList() {
       pendingScroll.current = req.index
       return
     }
+    if (req.isSlow) {
+      const el = containerRef.current?.querySelector('[data-scroll]') as HTMLElement | null
+      const top = offsets[Math.min(req.index, offsets.length - 1)] ?? 0
+      if (el && typeof el.scrollTo === 'function') {
+        try {
+          el.scrollTo({ top, behavior: 'smooth' })
+        } catch {
+          listRef.current?.scrollToItem(req.index, 'start')
+        }
+        return
+      }
+    }
     listRef.current?.scrollToItem(req.index, 'start')
-  }, [state.scrollRequest, heights])
+  }, [state.scrollRequest, heights, offsets])
 
   useEffect(() => {
     if (heights == null) return
@@ -102,6 +140,7 @@ export default function ReaderList() {
           itemCount={rows.length}
           itemSize={itemSize}
           overscanCount={4}
+          outerElementType={ScrollOuter}
           onItemsRendered={onItemsRendered}
         >
           {({ index, style }) => (

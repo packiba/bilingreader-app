@@ -34,6 +34,10 @@ export const IconPlus = ({ size = 18, color = 'currentColor' }: IconProps) => ba
 
 export const IconClose = ({ size = 18, color = 'currentColor' }: IconProps) => base(size, color, <path d="M18 6 6 18M6 6l12 12" />)
 
+export const IconLibrary = ({ size = 18, color = 'currentColor' }: IconProps) => base(size, color, (
+  <><path d="m16 6 4 14" /><path d="M12 6v14" /><path d="M8 8v12" /><path d="M4 4v16" /></>
+))
+
 export const IconMenu = ({ size = 18, color = 'currentColor' }: IconProps) => base(size, color, <path d="M3 12h18M3 6h18M3 18h18" />)
 
 export const IconPrev = ({ size = 18, color = 'currentColor' }: IconProps) => base(size, color, <path d="m11 17-5-5 5-5M18 17l-5-5 5-5" />)
