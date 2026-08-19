@@ -1,13 +1,13 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import { ReaderProvider } from './store/ReaderProvider'
+import App from './App'
 import './styles.css'
-
-function App() {
-  return <div style={{ padding: 24 }}>Biling Reader PWA</div>
-}
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ReaderProvider>
+      <App />
+    </ReaderProvider>
   </React.StrictMode>
 )
