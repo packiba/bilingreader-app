@@ -30,7 +30,7 @@ export default function ReaderList() {
   // Reset measurement when the layout inputs change
   useEffect(() => {
     setHeights(null)
-    pendingScroll.current = state.scrollRequest?.index ?? null
+    pendingScroll.current = state.scrollRequest?.index ?? state.currentPair
   }, [state.bookId, state.columnsSwapped, state.fontSize, state.expandMode])
 
   // Measure rows once sizes are known
