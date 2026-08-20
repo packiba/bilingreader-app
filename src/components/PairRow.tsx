@@ -73,7 +73,7 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
     }
     if (g.active) {
       if (Math.abs(dxv) > Math.abs(dyv) && Math.abs(dxv) > SWIPE_THRESHOLD) {
-        if (dxv > 0) reader.markAsReadAndNext(index)
+        if (dxv < 0) reader.markAsReadAndNext(index)
         else reader.markAsUnread(index)
         gesture.current = null
         setDx(0)

@@ -7,46 +7,54 @@ export default function PageSlider({ onDragPreview }: { onDragPreview?: (index: 
   const { state, chapterStarts, setCurrentPair } = useReader()
   const [drag, setDrag] = useState(false)
   const [dragVal, setDragVal] = useState(0)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const trackRef = useRef<HTMLDivElement>(null)
 
   if (!state.book) return null
   const total = Math.max(state.book.totalPairs, 1)
   const shown = drag ? dragVal : clamp(state.currentPair, total - 1)
   const pct = total > 1 ? (shown / (total - 1)) * 100 : 0
 
-  const onPointerDown = () => {
+  const indexFromClientX = (clientX: number) => {
+    const rect = trackRef.current?.getBoundingClientRect()
+    if (!rect || rect.width <= 0) return clamp(state.currentPair, total - 1)
+    const ratio = (clientX - rect.left) / rect.width
+    return clamp(Math.round(ratio * (total - 1)), total - 1)
+  }
+
+  const update = (idx: number) => {
+    setDragVal(idx)
+    onDragPreview?.(idx)
+  }
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    e.preventDefault()
+    try { trackRef.current?.setPointerCapture(e.pointerId) } catch { /* ignore */ }
     setDrag(true)
-    const v = clamp(state.currentPair, total - 1)
-    setDragVal(v)
-    onDragPreview?.(v)
+    update(indexFromClientX(e.clientX))
   }
-  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = Number(e.target.value)
-    setDragVal(v)
-    onDragPreview?.(v)
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!drag) return
+    update(indexFromClientX(e.clientX))
   }
-  const release = () => {
+
+  const release = (e: React.PointerEvent) => {
     if (!drag) return
     setDrag(false)
-    setCurrentPair(clamp(dragVal, total - 1))
+    setCurrentPair(dragVal)
     onDragPreview?.(null)
+    try { trackRef.current?.releasePointerCapture(e.pointerId) } catch { /* ignore */ }
   }
 
   return (
-    <div className="slidertrack">
-      <input
-        ref={inputRef}
-        type="range"
-        min={0}
-        max={total - 1}
-        value={shown}
-        className="slider"
-        onChange={onChange}
-        onPointerDown={onPointerDown}
-        onPointerUp={release}
-        onPointerCancel={release}
-        onPointerLeave={() => { if (drag) release() }}
-      />
+    <div
+      ref={trackRef}
+      className="slidertrack"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={release}
+      onPointerCancel={release}
+    >
       <div className="slidervis" aria-hidden>
         <div className="trackline" />
         {chapterStarts.map((s) => (
