@@ -45,11 +45,10 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
   const showTranslation = (word: string, isBulgarian: boolean, clientX: number, clientY: number) => {
     const x = Math.max(8, Math.min(clientX, window.innerWidth - 250))
     const y = Math.min(clientY + 12, window.innerHeight - 120)
-    const key = `word:${word}`
-    setPopup({ x, y, word: key, result: 'loading' })
+    setPopup({ x, y, word, result: 'loading' })
     reader.translateWordAction(word, isBulgarian).then(
-      (t) => setPopup((p) => (p && p.word === key ? { ...p, result: 'done', text: t, word } : p)),
-      () => setPopup((p) => (p && p.word === key ? { ...p, result: 'err', word } : p))
+      (t) => setPopup((p) => (p && p.word === word ? { ...p, result: 'done', text: t } : p)),
+      () => setPopup((p) => (p && p.word === word ? { ...p, result: 'err' } : p))
     )
   }
 

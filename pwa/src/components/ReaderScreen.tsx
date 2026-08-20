@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useReader } from '../store/ReaderProvider'
 import {
   IconCollapse, IconDropdown, IconDropup, IconExpand, IconLibrary, IconMenu,
-  IconMinus, IconMoon, IconNext, IconOpenFolder, IconPlus, IconPrev, IconSun, IconSwap
+  IconMinus, IconMoon, IconNext, IconPlus, IconPrev, IconSun, IconSwap
 } from './icons'
 import ReaderList from './ReaderList'
 import PageSlider from './PageSlider'
@@ -14,35 +14,17 @@ export default function ReaderScreen() {
   const [showToolbar, setShowToolbar] = useState(true)
   const [showSidebar, setShowSidebar] = useState(false)
   const [preview, setPreview] = useState<number | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const touchStart = useRef<{ y: number } | null>(null)
   const currentShown = preview ?? state.currentPair
   const totalShown = state.book ? Math.max(state.book.totalPairs, 0) : 0
-
-  const openFileBtn = (
-    <>
-      <input
-        ref={fileInputRef}
-        type="file"
-        accept=".json,application/json"
-        style={{ display: 'none' }}
-        onChange={(e) => {
-          const f = e.target.files?.[0]
-          e.target.value = ''
-          if (f) void reader.importFile(f)
-        }}
-      />
-      <button className="iconbtn" title="Открыть файл" onClick={() => fileInputRef.current?.click()}>
-        <IconOpenFolder size={18} />
-      </button>
-    </>
-  )
 
   return (
     <div className={`app ${state.dark ? 'theme-dark' : 'theme-light'}`}>
       {showToolbar && (
         <div className="toolbar">
-          {openFileBtn}
+          <button className="iconbtn" title="Библиотека" onClick={reader.closeBook}>
+            <IconLibrary size={18} />
+          </button>
           <div className="name">{state.fileName}</div>
           <button className="iconbtn" title="Тема" onClick={reader.toggleTheme}>
             {state.dark ? <IconMoon size={18} /> : <IconSun size={18} />}
@@ -63,9 +45,6 @@ export default function ReaderScreen() {
           </button>
           <button className="iconbtn" title="Больше шрифт" onClick={() => reader.setFontSize(state.fontSize + 1)}>
             <IconPlus size={18} />
-          </button>
-          <button className="iconbtn" title="Библиотека" onClick={reader.closeBook}>
-            <IconLibrary size={18} />
           </button>
         </div>
       )}

@@ -31,6 +31,8 @@ export default function ReaderList() {
   const heightsRef = useRef<Map<number, number>>(new Map())
   const lastToken = useRef(0)
   const pendingScroll = useRef<number | null>(null)
+  const currentPairRef = useRef(state.currentPair)
+  currentPairRef.current = state.currentPair
 
   useLayoutEffect(() => {
     const el = containerRef.current
@@ -59,12 +61,29 @@ export default function ReaderList() {
     () => `${state.bookId}|${Math.round(size.width)}|${state.fontSize}|${state.columnsSwapped}|${state.expandMode}`,
     [state.bookId, size.width, state.fontSize, state.columnsSwapped, state.expandMode]
   )
+  const measureKeyRef = useRef(measureKey)
+  measureKeyRef.current = measureKey
+  const snappedForKeyRef = useRef<string | null>(null)
 
   const handleMeasureComplete = useCallback((heights: number[]) => {
     const m = new Map<number, number>()
     for (let i = 0; i < heights.length; i++) m.set(i, heights[i])
     heightsRef.current = m
     listRef.current?.resetAfterIndex(0, true)
+    // A webfont can finish loading in several stages, so MeasurePass may
+    // report heights more than once per mount as they get refined. Only
+    // correct the scroll position the first time for a given measureKey —
+    // that's the one case where the previous heights (estimated, or from a
+    // different font/column/book layout) could be far enough off to land on
+    // the wrong row. Re-snapping on every later refinement served no purpose
+    // and, worse, a programmatic scroll while the user has a finger down on
+    // a word gets read by the browser as an interrupted gesture (no
+    // pointerup), which was silently breaking tap-to-translate.
+    if (snappedForKeyRef.current === measureKeyRef.current) return
+    snappedForKeyRef.current = measureKeyRef.current
+    const el = containerRef.current?.querySelector('[data-scroll]') as HTMLElement | null
+    if (el) el.style.scrollBehavior = 'auto'
+    listRef.current?.scrollToItem(currentPairRef.current, 'start')
   }, [])
 
   const itemSize = useCallback((index: number) => heightsRef.current.get(index) ?? ESTIMATED_ROW, [])
