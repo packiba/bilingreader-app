@@ -71,6 +71,9 @@ export default function ReaderList() {
   const heightsRef = useRef<Map<number, number>>(new Map())
   const lastToken = useRef(0)
   const pendingScroll = useRef<number | null>(null)
+  const scrollIdle = useRef(true)
+  const resizeTimer = useRef<number | null>(null)
+  const pendingResize = useRef(false)
 
   useLayoutEffect(() => {
     const el = containerRef.current
@@ -105,8 +108,39 @@ export default function ReaderList() {
     const prev = heightsRef.current.get(index)
     if (prev != null && Math.abs(prev - height) < RESIZE_EPSILON) return
     heightsRef.current.set(index, height)
-    listRef.current?.resetAfterIndex(index, false)
+    // Resizing the list mid-scroll (via resetAfterIndex) recalculates row
+    // offsets and makes react-window shift the scroll position, which felt
+    // like jumps when scrolling back through a book. Defer resizes until
+    // the user stops scrolling and apply them in one pass.
+    if (scrollIdle.current) {
+      listRef.current?.resetAfterIndex(index, false)
+    } else {
+      pendingResize.current = true
+    }
   }, [])
+
+  useEffect(() => {
+    if (size.width < 100) return
+    const el = containerRef.current?.querySelector('[data-scroll]') as HTMLElement | null
+    if (!el) return
+    const onScroll = () => {
+      scrollIdle.current = false
+      if (resizeTimer.current != null) window.clearTimeout(resizeTimer.current)
+      resizeTimer.current = window.setTimeout(() => {
+        resizeTimer.current = null
+        scrollIdle.current = true
+        if (pendingResize.current) {
+          pendingResize.current = false
+          listRef.current?.resetAfterIndex(0, false)
+        }
+      }, 150)
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      if (resizeTimer.current != null) window.clearTimeout(resizeTimer.current)
+    }
+  }, [size.width, size.height])
 
   // Navigate on scrollRequest; retried once the list becomes available if
   // it isn't mounted yet (e.g. container size not measured on first paint).
@@ -158,7 +192,7 @@ export default function ReaderList() {
           itemCount={rows.length}
           itemSize={itemSize}
           estimatedItemSize={ESTIMATED_ROW}
-          overscanCount={4}
+          overscanCount={8}
           outerElementType={ScrollOuter}
           onItemsRendered={onItemsRendered}
         >
