@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { VariableSizeList as List } from 'react-window'
 import type { ListOnItemsRenderedProps } from 'react-window'
 import { useReader } from '../store/ReaderProvider'
 import PairRow from './PairRow'
 
 const ESTIMATED_ROW = 120
+const RESIZE_EPSILON = 1
 
-function ScrollOuter(props: Record<string, unknown>) {
+const ScrollOuter = forwardRef<HTMLDivElement, Record<string, unknown>>((props, ref) => {
   const { children, style, onScroll, onWheel, ...rest } = props as {
     children: React.ReactNode
     style: React.CSSProperties
@@ -15,8 +16,49 @@ function ScrollOuter(props: Record<string, unknown>) {
     [k: string]: unknown
   }
   return (
-    <div style={style} onScroll={onScroll} onWheel={onWheel} data-scroll {...rest}>
+    <div ref={ref} style={style} onScroll={onScroll} onWheel={onWheel} data-scroll {...rest}>
       {children}
+    </div>
+  )
+})
+ScrollOuter.displayName = 'ScrollOuter'
+
+// Wraps a single virtualized row so it can measure its own natural height
+// synchronously after layout (useLayoutEffect, not requestAnimationFrame)
+// and report it back to the list. This lets the list start rendering
+// immediately with estimated sizes instead of first rendering the entire
+// book off-screen just to measure every row up front — and it doesn't
+// depend on a rAF callback that mobile browsers can defer/throttle while
+// a backgrounded PWA is being resumed.
+function MeasuredRow({
+  index,
+  style,
+  onMeasured,
+  children
+}: {
+  index: number
+  style: React.CSSProperties
+  onMeasured: (index: number, height: number) => void
+  children: React.ReactNode
+}) {
+  const innerRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const el = innerRef.current
+    if (el) onMeasured(index, el.offsetHeight)
+  })
+
+  useEffect(() => {
+    const el = innerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => onMeasured(index, el.offsetHeight))
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [index, onMeasured])
+
+  return (
+    <div style={style}>
+      <div ref={innerRef}>{children}</div>
     </div>
   )
 }
@@ -24,16 +66,22 @@ function ScrollOuter(props: Record<string, unknown>) {
 export default function ReaderList() {
   const { rows, state, onUserScrolled } = useReader()
   const containerRef = useRef<HTMLDivElement>(null)
-  const measureRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<List>(null)
-  const [size, setSize] = useState({ width: 1, height: 1 })
-  const [heights, setHeights] = useState<number[] | null>(null)
+  const [size, setSize] = useState({ width: 0, height: 0 })
+  const heightsRef = useRef<Map<number, number>>(new Map())
   const lastToken = useRef(0)
   const pendingScroll = useRef<number | null>(null)
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = containerRef.current
     if (!el) return
+    // Read the size synchronously on mount instead of waiting only for the
+    // ResizeObserver's first (async) callback: on iOS/PWA, when the app is
+    // resumed from the home screen, that first callback can be deferred
+    // until the next scroll/touch gesture, which left the screen blank
+    // until the user scrolled.
+    const rect = el.getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) setSize({ width: rect.width, height: rect.height })
     const ro = new ResizeObserver((entries) => {
       const r = entries[0].contentRect
       setSize({ width: r.width, height: r.height })
@@ -42,76 +90,62 @@ export default function ReaderList() {
     return () => ro.disconnect()
   }, [])
 
-  // Reset measurement when the layout inputs change
+  // Layout inputs that affect row height changed: forget what we measured
+  // and let the currently-visible rows remeasure themselves on their next
+  // render, rather than rendering the whole book off-screen again.
   useEffect(() => {
-    setHeights(null)
-    pendingScroll.current = state.scrollRequest?.index ?? state.currentPair
+    heightsRef.current.clear()
+    listRef.current?.resetAfterIndex(0, true)
   }, [state.bookId, state.columnsSwapped, state.fontSize, state.expandMode])
 
-  // Measure rows once sizes are known
-  useEffect(() => {
-    if (size.width < 100) return
-    if (heights != null) return
-    const root = measureRef.current
-    if (!root) return
-    const raf = requestAnimationFrame(() => {
-      const hs: number[] = []
-      const children = Array.from(root.children) as HTMLElement[]
-      for (let i = 0; i < children.length; i++) {
-        hs.push(children[i].offsetHeight || ESTIMATED_ROW)
-      }
-      setHeights(hs)
-    })
-    return () => cancelAnimationFrame(raf)
-  }, [size.width, heights, state.bookId, state.columnsSwapped, state.fontSize, state.expandMode])
+  const itemSize = useCallback((index: number) => heightsRef.current.get(index) ?? ESTIMATED_ROW, [])
 
-  const itemSize = useCallback((index: number) => {
-    return heights ? heights[index] ?? ESTIMATED_ROW : ESTIMATED_ROW
-  }, [heights])
-
-  const offsets = useMemo(() => {
-    if (!heights) return []
-    const o = new Array<number>(heights.length)
+  const offsetForIndex = useCallback((index: number) => {
     let acc = 0
-    for (let i = 0; i < heights.length; i++) {
-      o[i] = acc
-      acc += heights[i] ?? ESTIMATED_ROW
-    }
-    return o
-  }, [heights])
+    for (let i = 0; i < index; i++) acc += heightsRef.current.get(i) ?? ESTIMATED_ROW
+    return acc
+  }, [])
 
-  // Navigate on scrollRequest; defer until heights are measured
+  const handleMeasured = useCallback((index: number, height: number) => {
+    if (height <= 0) return
+    const prev = heightsRef.current.get(index)
+    if (prev != null && Math.abs(prev - height) < RESIZE_EPSILON) return
+    heightsRef.current.set(index, height)
+    listRef.current?.resetAfterIndex(index, false)
+  }, [])
+
+  // Navigate on scrollRequest; retried once the list becomes available if
+  // it isn't mounted yet (e.g. container size not measured on first paint).
   useEffect(() => {
     const req = state.scrollRequest
     if (!req) return
     if (req.token === lastToken.current) return
     lastToken.current = req.token
-    if (heights == null) {
-      pendingScroll.current = req.index
-      return
-    }
+    pendingScroll.current = req.index
+    if (!listRef.current) return
     if (req.isSlow) {
       const el = containerRef.current?.querySelector('[data-scroll]') as HTMLElement | null
-      const top = offsets[Math.min(req.index, offsets.length - 1)] ?? 0
+      const top = offsetForIndex(Math.min(req.index, Math.max(rows.length - 1, 0)))
       if (el && typeof el.scrollTo === 'function') {
         try {
           el.scrollTo({ top, behavior: 'smooth' })
+          pendingScroll.current = null
+          return
         } catch {
-          listRef.current?.scrollToItem(req.index, 'start')
+          // fall through to scrollToItem below
         }
-        return
       }
     }
-    listRef.current?.scrollToItem(req.index, 'start')
-  }, [state.scrollRequest, heights, offsets])
+    listRef.current.scrollToItem(req.index, 'start')
+    pendingScroll.current = null
+  }, [state.scrollRequest, offsetForIndex, rows.length])
 
   useEffect(() => {
-    if (heights == null) return
-    if (pendingScroll.current != null) {
-      listRef.current?.scrollToItem(pendingScroll.current, 'start')
-      pendingScroll.current = null
-    }
-  }, [heights])
+    if (pendingScroll.current == null) return
+    if (!listRef.current) return
+    listRef.current.scrollToItem(pendingScroll.current, 'start')
+    pendingScroll.current = null
+  }, [size.width, size.height, rows.length])
 
   const onItemsRendered = useCallback((p: ListOnItemsRenderedProps) => {
     onUserScrolled(p.visibleStartIndex)
@@ -119,34 +153,22 @@ export default function ReaderList() {
 
   return (
     <div ref={containerRef} style={{ position: 'absolute', inset: 0 }}>
-      {heights == null && size.width >= 100 ? (
-        <div
-          ref={measureRef}
-          style={{ position: 'absolute', left: -20000, top: 0, width: size.width, visibility: 'hidden', pointerEvents: 'none' }}
-          aria-hidden
-        >
-          {rows.map((_r, i) => (
-            <div key={i} style={{ width: size.width }}>
-              <PairRow rows={rows} index={i} />
-            </div>
-          ))}
-        </div>
-      ) : null}
-      {heights != null && rows.length > 0 ? (
+      {size.width >= 100 && rows.length > 0 ? (
         <List
           ref={listRef}
           height={size.height}
           width={size.width}
           itemCount={rows.length}
           itemSize={itemSize}
+          estimatedItemSize={ESTIMATED_ROW}
           overscanCount={4}
           outerElementType={ScrollOuter}
           onItemsRendered={onItemsRendered}
         >
           {({ index, style }) => (
-            <div style={style}>
+            <MeasuredRow index={index} style={style} onMeasured={handleMeasured}>
               <PairRow rows={rows} index={index} />
-            </div>
+            </MeasuredRow>
           )}
         </List>
       ) : null}
