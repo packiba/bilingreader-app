@@ -1,11 +1,11 @@
-import { forwardRef, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { VariableSizeList as List } from 'react-window'
 import type { ListOnItemsRenderedProps } from 'react-window'
 import { useReader } from '../store/ReaderProvider'
 import PairRow from './PairRow'
+import MeasurePass from './MeasurePass'
 
 const ESTIMATED_ROW = 120
-const RESIZE_EPSILON = 1
 
 const ScrollOuter = forwardRef<HTMLDivElement, Record<string, unknown>>((props, ref) => {
   const { children, style, onScroll, onWheel, ...rest } = props as {
@@ -23,46 +23,6 @@ const ScrollOuter = forwardRef<HTMLDivElement, Record<string, unknown>>((props, 
 })
 ScrollOuter.displayName = 'ScrollOuter'
 
-// Wraps a single virtualized row so it can measure its own natural height
-// synchronously after layout (useLayoutEffect, not requestAnimationFrame)
-// and report it back to the list. This lets the list start rendering
-// immediately with estimated sizes instead of first rendering the entire
-// book off-screen just to measure every row up front — and it doesn't
-// depend on a rAF callback that mobile browsers can defer/throttle while
-// a backgrounded PWA is being resumed.
-function MeasuredRow({
-  index,
-  style,
-  onMeasured,
-  children
-}: {
-  index: number
-  style: React.CSSProperties
-  onMeasured: (index: number, height: number) => void
-  children: React.ReactNode
-}) {
-  const innerRef = useRef<HTMLDivElement>(null)
-
-  useLayoutEffect(() => {
-    const el = innerRef.current
-    if (el) onMeasured(index, el.offsetHeight)
-  })
-
-  useEffect(() => {
-    const el = innerRef.current
-    if (!el) return
-    const ro = new ResizeObserver(() => onMeasured(index, el.offsetHeight))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [index, onMeasured])
-
-  return (
-    <div style={style}>
-      <div ref={innerRef}>{children}</div>
-    </div>
-  )
-}
-
 export default function ReaderList() {
   const { rows, state, onUserScrolled } = useReader()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -71,9 +31,6 @@ export default function ReaderList() {
   const heightsRef = useRef<Map<number, number>>(new Map())
   const lastToken = useRef(0)
   const pendingScroll = useRef<number | null>(null)
-  const scrollIdle = useRef(true)
-  const resizeTimer = useRef<number | null>(null)
-  const pendingResize = useRef(false)
 
   useLayoutEffect(() => {
     const el = containerRef.current
@@ -93,69 +50,31 @@ export default function ReaderList() {
     return () => ro.disconnect()
   }, [])
 
-  // Layout inputs that affect row height changed: forget what we measured
-  // and let the currently-visible rows remeasure themselves on their next
-  // render, rather than rendering the whole book off-screen again.
-  useEffect(() => {
-    heightsRef.current.clear()
+  // Re-measure whenever anything that affects row height changes. The
+  // measure pass is fully static (all rows measured up front), so swapping
+  // the map and calling resetAfterIndex once is a deliberate reflow, not an
+  // incremental correction mid-scroll — the scroll position never shifts
+  // under the user afterwards.
+  const measureKey = useMemo(
+    () => `${state.bookId}|${Math.round(size.width)}|${state.fontSize}|${state.columnsSwapped}|${state.expandMode}`,
+    [state.bookId, size.width, state.fontSize, state.columnsSwapped, state.expandMode]
+  )
+
+  const handleMeasureComplete = useCallback((heights: number[]) => {
+    const m = new Map<number, number>()
+    for (let i = 0; i < heights.length; i++) m.set(i, heights[i])
+    heightsRef.current = m
     listRef.current?.resetAfterIndex(0, true)
-  }, [state.bookId, state.columnsSwapped, state.fontSize, state.expandMode])
-
-  const itemSize = useCallback((index: number) => heightsRef.current.get(index) ?? ESTIMATED_ROW, [])
-
-  const handleMeasured = useCallback((index: number, height: number) => {
-    if (height <= 0) return
-    const prev = heightsRef.current.get(index)
-    if (prev != null && Math.abs(prev - height) < RESIZE_EPSILON) return
-    heightsRef.current.set(index, height)
-    // Resizing the list mid-scroll (via resetAfterIndex) recalculates row
-    // offsets and makes react-window shift the scroll position, which felt
-    // like jumps when scrolling back through a book. Defer resizes until
-    // the user stops scrolling and apply them in one pass.
-    if (scrollIdle.current) {
-      listRef.current?.resetAfterIndex(index, false)
-    } else {
-      pendingResize.current = true
-    }
   }, [])
 
-  useEffect(() => {
-    if (size.width < 100) return
-    const el = containerRef.current?.querySelector('[data-scroll]') as HTMLElement | null
-    if (!el) return
-    const onScroll = () => {
-      scrollIdle.current = false
-      if (resizeTimer.current != null) window.clearTimeout(resizeTimer.current)
-      resizeTimer.current = window.setTimeout(() => {
-        resizeTimer.current = null
-        scrollIdle.current = true
-        if (pendingResize.current) {
-          pendingResize.current = false
-          listRef.current?.resetAfterIndex(0, false)
-        }
-      }, 150)
-    }
-    el.addEventListener('scroll', onScroll, { passive: true })
-    return () => {
-      el.removeEventListener('scroll', onScroll)
-      if (resizeTimer.current != null) window.clearTimeout(resizeTimer.current)
-    }
-  }, [size.width, size.height])
+  const itemSize = useCallback((index: number) => heightsRef.current.get(index) ?? ESTIMATED_ROW, [])
 
   // Navigate on scrollRequest; retried once the list becomes available if
   // it isn't mounted yet (e.g. container size not measured on first paint).
   //
   // Scrolling always goes through react-window's own scrollToItem, which
-  // keeps a single internal cache of row offsets (built up incrementally as
-  // rows are actually rendered) and updates it via resetAfterIndex above.
-  // A separate, hand-rolled cumulative-offset calculation was used here
-  // before to animate "isSlow" scrolls smoothly, but for a book you're deep
-  // into, most of the preceding rows have never been rendered/measured, so
-  // that calculation fell back to the estimated row height for almost all
-  // of them — landing far from the actual next row. Smooth animation is now
-  // achieved by toggling CSS `scroll-behavior` on the scroll container
-  // instead, so the target offset always comes from the one source of
-  // truth (react-window's own metadata).
+  // works off the static height map (see itemSize), so the landing position
+  // is exact whether the target rows have ever been on screen or not.
   useEffect(() => {
     const req = state.scrollRequest
     if (!req) return
@@ -184,7 +103,17 @@ export default function ReaderList() {
 
   return (
     <div ref={containerRef} style={{ position: 'absolute', inset: 0 }}>
-      {size.width >= 100 && rows.length > 0 ? (
+      {size.width >= 100 && rows.length > 0 && (
+        <MeasurePass
+          key={measureKey}
+          rows={rows}
+          width={size.width}
+          fontSize={state.fontSize}
+          expandMode={state.expandMode}
+          onComplete={handleMeasureComplete}
+        />
+      )}
+      {size.width >= 100 && rows.length > 0 && (
         <List
           ref={listRef}
           height={size.height}
@@ -197,12 +126,12 @@ export default function ReaderList() {
           onItemsRendered={onItemsRendered}
         >
           {({ index, style }) => (
-            <MeasuredRow index={index} style={style} onMeasured={handleMeasured}>
+            <div style={style}>
               <PairRow rows={rows} index={index} />
-            </MeasuredRow>
+            </div>
           )}
         </List>
-      ) : null}
+      )}
     </div>
   )
 }
