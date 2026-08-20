@@ -120,7 +120,7 @@ function reducer(s: ReaderState, a: Action): ReaderState {
       }
     }
     case 'UNREAD':
-      return s.readThrough <= a.index ? { ...s, readExceptions: [...new Set([...s.readExceptions, a.index])] } : s
+      return a.index <= s.readThrough ? { ...s, readExceptions: [...new Set([...s.readExceptions, a.index])] } : s
     case 'FONT': return { ...s, fontSize: a.size }
     case 'THEME': return { ...s, dark: a.dark }
     case 'COLUMNS': return { ...s, columnsSwapped: a.swapped }
