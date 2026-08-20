@@ -3,6 +3,12 @@ const BG_PREFIXES = ['bg', 'bg-', 'bg_', 'bulgarian']
 // browser silently dropped the utterance (a known WebKit/Chrome quirk) —
 // treat it as an error instead of hanging continuous reading forever.
 const START_WATCHDOG_MS = 3000
+// How long to wait for the voice list to finish loading before giving up.
+// getVoices() is frequently empty on the very first call right after page
+// load (voices load asynchronously), which used to surface the "voice not
+// found" message even though a Bulgarian voice was available a moment
+// later.
+const VOICE_WAIT_MS = 4000
 
 function isBg(lang: string): boolean {
   const l = lang.toLowerCase()
@@ -53,11 +59,17 @@ export function createTts(): TtsController {
   }
   const synth = window.speechSynthesis
   if (!synth) return controller
+  // Nudge some browsers into loading the voice list sooner.
+  synth.getVoices()
 
   let intentionalStop = false
   let speaking = false
   let watchdog: number | null = null
   let currentUtter: SpeechSynthesisUtterance | null = null
+  // A token bumped on every speak()/stop() call, so a voice-list wait that
+  // resolves late (see waitForVoice) can tell it's no longer the active
+  // request and avoid speaking after stop() or a newer speak() call.
+  let callToken = 0
   // Once we've successfully found a Bulgarian voice, keep using that same
   // voice object instead of re-querying getVoices() on every call.
   // getVoices() can momentarily return an empty/stale list right after a
@@ -67,13 +79,32 @@ export function createTts(): TtsController {
   let knownVoice: SpeechSynthesisVoice | undefined
 
   const resolveVoice = (): SpeechSynthesisVoice | undefined => {
-    if (knownVoice) return knownVoice
-    knownVoice = findBgVoice()
+    if (!knownVoice) knownVoice = findBgVoice()
     return knownVoice
   }
   synth.addEventListener('voiceschanged', () => {
     if (!knownVoice) knownVoice = findBgVoice()
   })
+
+  function waitForVoice(): Promise<SpeechSynthesisVoice | undefined> {
+    const existing = resolveVoice()
+    if (existing) return Promise.resolve(existing)
+    return new Promise((resolve) => {
+      let done = false
+      const finish = (v?: SpeechSynthesisVoice) => {
+        if (done) return
+        done = true
+        synth.removeEventListener('voiceschanged', onChange)
+        resolve(v)
+      }
+      const onChange = () => {
+        const v = resolveVoice()
+        if (v) finish(v)
+      }
+      synth.addEventListener('voiceschanged', onChange)
+      window.setTimeout(() => finish(resolveVoice()), VOICE_WAIT_MS)
+    })
+  }
 
   const clearWatchdog = () => {
     if (watchdog != null) {
@@ -82,15 +113,7 @@ export function createTts(): TtsController {
     }
   }
 
-  controller.isSpeaking = () => speaking
-
-  controller.speak = (text: string) => {
-    const voice = resolveVoice()
-    if (!voice) {
-      controller.onMissingVoice()
-      return
-    }
-    intentionalStop = false
+  const doSpeak = (text: string, voice: SpeechSynthesisVoice) => {
     clearWatchdog()
     // Safari has a known bug where calling cancel() when nothing is
     // actually speaking/queued corrupts the synthesis engine's internal
@@ -133,8 +156,31 @@ export function createTts(): TtsController {
     }, START_WATCHDOG_MS)
   }
 
+  controller.isSpeaking = () => speaking
+
+  controller.speak = (text: string) => {
+    intentionalStop = false
+    const token = ++callToken
+    const existing = resolveVoice()
+    if (existing) {
+      doSpeak(text, existing)
+      return
+    }
+    // Voices aren't loaded yet — wait briefly instead of failing right
+    // away; most of the time they finish loading within a few hundred ms.
+    waitForVoice().then((voice) => {
+      if (token !== callToken) return // superseded by a newer speak()/stop()
+      if (!voice) {
+        controller.onMissingVoice()
+        return
+      }
+      doSpeak(text, voice)
+    })
+  }
+
   controller.stop = () => {
     intentionalStop = true
+    callToken++
     clearWatchdog()
     currentUtter = null
     synth.cancel()

@@ -73,7 +73,7 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
     }
     if (g.active) {
       if (Math.abs(dxv) > Math.abs(dyv) && Math.abs(dxv) > SWIPE_THRESHOLD) {
-        if (dxv < 0) reader.markAsReadAndNext(index)
+        if (dxv > 0) reader.markAsReadAndNext(index)
         else reader.markAsUnread(index)
         gesture.current = null
         setDx(0)
@@ -170,19 +170,21 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
       {row.showHeader && (
         <ChapterHeader titleSrc={row.headerTitleSrc} titleTgt={row.headerTitleTgt} fontSize={state.fontSize} dark={state.dark} />
       )}
-      <div style={{ transform: `translateX(${dx}px)` }}>
-        {cellContent}
+      <div style={{ position: 'relative' }}>
+        <div style={{ transform: `translateX(${dx}px)` }}>
+          {cellContent}
+        </div>
+        <button
+          className="iconbtn speakerbtn"
+          style={{ position: 'absolute', top: 2, right: 2, width: 30, height: 30, color: speakerColor, background: 'transparent' }}
+          onPointerDown={onSpeakerDown}
+          onPointerUp={onSpeakerUp}
+          onPointerCancel={() => { speakerGesture.current = null; longPressFired.current = false }}
+          onClick={onSpeakerClick}
+        >
+          {speaking ? <IconStop size={16} /> : <IconSpeaker size={16} />}
+        </button>
       </div>
-      <button
-        className="iconbtn speakerbtn"
-        style={{ position: 'absolute', top: 2, right: 2, width: 30, height: 30, color: speakerColor, background: 'transparent' }}
-        onPointerDown={onSpeakerDown}
-        onPointerUp={onSpeakerUp}
-        onPointerCancel={() => { speakerGesture.current = null; longPressFired.current = false }}
-        onClick={onSpeakerClick}
-      >
-        {speaking ? <IconStop size={16} /> : <IconSpeaker size={16} />}
-      </button>
       {popup && (
         <div className="popup" style={{ left: popup.x, top: popup.y }} onClick={() => setPopup(null)}>
           <div className="wrap">
