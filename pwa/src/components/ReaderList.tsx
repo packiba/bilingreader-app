@@ -100,12 +100,6 @@ export default function ReaderList() {
 
   const itemSize = useCallback((index: number) => heightsRef.current.get(index) ?? ESTIMATED_ROW, [])
 
-  const offsetForIndex = useCallback((index: number) => {
-    let acc = 0
-    for (let i = 0; i < index; i++) acc += heightsRef.current.get(i) ?? ESTIMATED_ROW
-    return acc
-  }, [])
-
   const handleMeasured = useCallback((index: number, height: number) => {
     if (height <= 0) return
     const prev = heightsRef.current.get(index)
@@ -116,6 +110,18 @@ export default function ReaderList() {
 
   // Navigate on scrollRequest; retried once the list becomes available if
   // it isn't mounted yet (e.g. container size not measured on first paint).
+  //
+  // Scrolling always goes through react-window's own scrollToItem, which
+  // keeps a single internal cache of row offsets (built up incrementally as
+  // rows are actually rendered) and updates it via resetAfterIndex above.
+  // A separate, hand-rolled cumulative-offset calculation was used here
+  // before to animate "isSlow" scrolls smoothly, but for a book you're deep
+  // into, most of the preceding rows have never been rendered/measured, so
+  // that calculation fell back to the estimated row height for almost all
+  // of them — landing far from the actual next row. Smooth animation is now
+  // achieved by toggling CSS `scroll-behavior` on the scroll container
+  // instead, so the target offset always comes from the one source of
+  // truth (react-window's own metadata).
   useEffect(() => {
     const req = state.scrollRequest
     if (!req) return
@@ -123,26 +129,17 @@ export default function ReaderList() {
     lastToken.current = req.token
     pendingScroll.current = req.index
     if (!listRef.current) return
-    if (req.isSlow) {
-      const el = containerRef.current?.querySelector('[data-scroll]') as HTMLElement | null
-      const top = offsetForIndex(Math.min(req.index, Math.max(rows.length - 1, 0)))
-      if (el && typeof el.scrollTo === 'function') {
-        try {
-          el.scrollTo({ top, behavior: 'smooth' })
-          pendingScroll.current = null
-          return
-        } catch {
-          // fall through to scrollToItem below
-        }
-      }
-    }
+    const el = containerRef.current?.querySelector('[data-scroll]') as HTMLElement | null
+    if (el) el.style.scrollBehavior = req.isSlow ? 'smooth' : 'auto'
     listRef.current.scrollToItem(req.index, 'start')
     pendingScroll.current = null
-  }, [state.scrollRequest, offsetForIndex, rows.length])
+  }, [state.scrollRequest])
 
   useEffect(() => {
     if (pendingScroll.current == null) return
     if (!listRef.current) return
+    const el = containerRef.current?.querySelector('[data-scroll]') as HTMLElement | null
+    if (el) el.style.scrollBehavior = 'auto'
     listRef.current.scrollToItem(pendingScroll.current, 'start')
     pendingScroll.current = null
   }, [size.width, size.height, rows.length])
