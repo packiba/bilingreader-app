@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import type { RenderRow } from '../types'
 import { useReader } from '../store/ReaderProvider'
 import { IconSpeaker, IconStop } from './icons'
-import ChapterHeader from './ChapterHeader'
+import PairRowContent from './PairRowContent'
 
 const SWIPE_THRESHOLD = 48
 const LONG_PRESS_MS = 600
@@ -26,7 +26,6 @@ interface GestureState {
 export default function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
   const reader = useReader()
   const { state } = reader
-  const row = rows[index]
   const read = reader.isRead(index)
 
   const [dx, setDx] = useState(0)
@@ -36,9 +35,6 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
   const speakerGesture = useRef<GestureState | null>(null)
   const longPressFired = useRef(false)
 
-  const activeColor = state.dark ? '#D1D5DB' : '#1F2937'
-  const dimmedColor = state.dark ? '#888888' : '#999999'
-  const textColor = read ? dimmedColor : activeColor
   const speaking = state.speakingPair === index
   const speakerColor = speaking && state.isContinuousReading
     ? 'var(--speech)'
@@ -134,28 +130,7 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
     reader.toggleSpeak(index)
   }
 
-  const srcIsBg = row.isSrcBulgarian
-  const srcCol = (
-    <div className={`col left ${srcIsBg ? 'bglang' : 'russian'}`}>
-      <div className="textbook rowtext" style={{ fontSize: state.fontSize, color: textColor }}>{row.srcText}</div>
-    </div>
-  )
-  const tgtCol = (
-    <div className={`col right ${srcIsBg ? 'russian' : 'bglang'}`}>
-      <div className="textbook rowtext" style={{ fontSize: state.fontSize, color: textColor }}>{row.tgtText}</div>
-    </div>
-  )
-
   const expand = state.expandMode as 'SRC' | 'TGT' | 'NONE' | 'AWAITING'
-  const cellContent =
-    expand === 'SRC' ? srcCol :
-    expand === 'TGT' ? tgtCol : (
-      <div className="cell">
-        {srcCol}
-        <div className="dividerC" />
-        {tgtCol}
-      </div>
-    )
 
   return (
     <div
@@ -167,24 +142,27 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
     >
-      {row.showHeader && (
-        <ChapterHeader titleSrc={row.headerTitleSrc} titleTgt={row.headerTitleTgt} fontSize={state.fontSize} dark={state.dark} />
-      )}
-      <div style={{ position: 'relative' }}>
-        <div style={{ transform: `translateX(${dx}px)` }}>
-          {cellContent}
-        </div>
-        <button
-          className="iconbtn speakerbtn"
-          style={{ position: 'absolute', top: 2, right: 2, width: 30, height: 30, color: speakerColor, background: 'transparent' }}
-          onPointerDown={onSpeakerDown}
-          onPointerUp={onSpeakerUp}
-          onPointerCancel={() => { speakerGesture.current = null; longPressFired.current = false }}
-          onClick={onSpeakerClick}
-        >
-          {speaking ? <IconStop size={16} /> : <IconSpeaker size={16} />}
-        </button>
-      </div>
+      <PairRowContent
+        rows={rows}
+        index={index}
+        dark={state.dark}
+        fontSize={state.fontSize}
+        expandMode={expand}
+        read={read}
+        dx={dx}
+        speaker={
+          <button
+            className="iconbtn speakerbtn"
+            style={{ position: 'absolute', top: 2, right: 2, width: 30, height: 30, color: speakerColor, background: 'transparent' }}
+            onPointerDown={onSpeakerDown}
+            onPointerUp={onSpeakerUp}
+            onPointerCancel={() => { speakerGesture.current = null; longPressFired.current = false }}
+            onClick={onSpeakerClick}
+          >
+            {speaking ? <IconStop size={16} /> : <IconSpeaker size={16} />}
+          </button>
+        }
+      />
       {popup && (
         <div className="popup" style={{ left: popup.x, top: popup.y }} onClick={() => setPopup(null)}>
           <div className="wrap">
