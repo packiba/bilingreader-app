@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
+import { memo, useRef, useState } from 'react'
 import type { RenderRow } from '../types'
-import { useReader } from '../store/ReaderProvider'
+import { useReaderRow } from '../store/ReaderProvider'
 import { IconSpeaker, IconStop } from './icons'
 import PairRowContent from './PairRowContent'
 
@@ -15,9 +15,8 @@ interface GestureState {
   moved: boolean
 }
 
-export default function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
-  const reader = useReader()
-  const { state } = reader
+function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
+  const reader = useReaderRow()
   const read = reader.isRead(index)
 
   const [dx, setDx] = useState(0)
@@ -26,8 +25,8 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
   const speakerGesture = useRef<GestureState | null>(null)
   const longPressFired = useRef(false)
 
-  const speaking = state.speakingPair === index
-  const speakerColor = speaking && state.isContinuousReading
+  const speaking = reader.speakingPair === index
+  const speakerColor = speaking && reader.isContinuousReading
     ? 'var(--speech)'
     : speaking
       ? 'var(--accent)'
@@ -114,7 +113,7 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
     reader.toggleSpeak(index)
   }
 
-  const expand = state.expandMode as 'SRC' | 'TGT' | 'NONE' | 'AWAITING'
+  const expand = reader.expandMode as 'SRC' | 'TGT' | 'NONE' | 'AWAITING'
 
   return (
     <div
@@ -129,8 +128,8 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
       <PairRowContent
         rows={rows}
         index={index}
-        dark={state.dark}
-        fontSize={state.fontSize}
+        dark={reader.dark}
+        fontSize={reader.fontSize}
         expandMode={expand}
         read={read}
         dx={dx}
@@ -160,6 +159,8 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
     </div>
   )
 }
+
+export default memo(PairRow)
 
 function wordAtPoint(container: Element, x: number, y: number): string | null {
   const caret = document.caretRangeFromPoint
