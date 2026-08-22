@@ -95,6 +95,7 @@ export default function ReaderScreen() {
       )}
 
       {showSidebar && <ChapterSidebar onClose={() => setShowSidebar(false)} />}
+      {reader.wordPopup && <div className="popup-scrim" onClick={reader.closeWordPopup} />}
       {state.error && <div className="snackbar" onClick={dismissError}>{state.error}</div>}
     </div>
   )

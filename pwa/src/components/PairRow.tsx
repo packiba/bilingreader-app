@@ -7,14 +7,6 @@ import PairRowContent from './PairRowContent'
 const SWIPE_THRESHOLD = 48
 const LONG_PRESS_MS = 600
 
-interface PopupState {
-  x: number
-  y: number
-  word: string
-  result: 'loading' | 'done' | 'err'
-  text?: string
-}
-
 interface GestureState {
   sx: number
   sy: number
@@ -29,7 +21,6 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
   const read = reader.isRead(index)
 
   const [dx, setDx] = useState(0)
-  const [popup, setPopup] = useState<PopupState | null>(null)
   const cellRef = useRef<HTMLDivElement>(null)
   const gesture = useRef<GestureState | null>(null)
   const speakerGesture = useRef<GestureState | null>(null)
@@ -42,15 +33,7 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
       ? 'var(--accent)'
       : 'var(--text-dimmed)'
 
-  const showTranslation = (word: string, isBulgarian: boolean, clientX: number, clientY: number) => {
-    const x = Math.max(8, Math.min(clientX, window.innerWidth - 250))
-    const y = Math.min(clientY + 12, window.innerHeight - 120)
-    setPopup({ x, y, word, result: 'loading' })
-    reader.translateWordAction(word, isBulgarian).then(
-      (t) => setPopup((p) => (p && p.word === word ? { ...p, result: 'done', text: t } : p)),
-      () => setPopup((p) => (p && p.word === word ? { ...p, result: 'err' } : p))
-    )
-  }
+  const popup = reader.wordPopup?.index === index ? reader.wordPopup : null
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.target instanceof Element && e.target.closest('.speakerbtn')) return
@@ -92,7 +75,9 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
       const word = wordAtPoint(textEl, e.clientX, e.clientY)
       if (word) {
         const isBulgarian = !!target.closest('.bglang')
-        showTranslation(word, isBulgarian, e.clientX, e.clientY)
+        const x = Math.max(8, Math.min(e.clientX, window.innerWidth - 250))
+        const y = Math.min(e.clientY + 12, window.innerHeight - 120)
+        reader.showWordPopup(index, word, isBulgarian, x, y)
       }
     }
   }
@@ -163,7 +148,7 @@ export default function PairRow({ rows, index }: { rows: RenderRow[]; index: num
         }
       />
       {popup && (
-        <div className="popup" style={{ left: popup.x, top: popup.y }} onClick={() => setPopup(null)}>
+        <div className="popup" style={{ left: popup.x, top: popup.y }} onClick={() => reader.closeWordPopup()}>
           <div className="wrap">
             <div className="word">{popup.word}</div>
             {popup.result === 'loading' && <div className="body">…</div>}
