@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from 'react'
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Book, RenderRow } from '../types'
 import { buildRenderRows, computeChapterStarts, parseBook } from '../parser/bookParser'
 import * as db from './db'
@@ -133,6 +133,15 @@ function isRead(s: ReaderState, index: number): boolean {
   return index <= s.readThrough && !s.readExceptions.includes(index)
 }
 
+export interface WordPopupState {
+  index: number
+  x: number
+  y: number
+  word: string
+  result: 'loading' | 'done' | 'err'
+  text?: string
+}
+
 interface ReaderContextValue {
   state: ReaderState
   rows: RenderRow[]
@@ -158,6 +167,9 @@ interface ReaderContextValue {
   stopSpeaking: () => void
   translateWordAction: (word: string, isBulgarian: boolean) => Promise<string>
   dismissError: () => void
+  wordPopup: WordPopupState | null
+  showWordPopup: (index: number, word: string, isBulgarian: boolean, x: number, y: number) => void
+  closeWordPopup: () => void
 }
 
 const ReaderContext = createContext<ReaderContextValue | null>(null)
@@ -174,6 +186,27 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
   stateRef.current = state
   const persistTimer = useRef<number | null>(null)
   const ttsRef = useRef<TtsController | null>(null)
+  // Lives outside the reducer: purely transient UI state, not persisted, and
+  // deliberately a single shared slot (not per-row local state) so opening a
+  // translation on one word always replaces whatever popup was already open
+  // instead of stacking up — a row's local useState couldn't do that, since
+  // each virtualized row is its own independent component instance.
+  const [wordPopup, setWordPopup] = useState<WordPopupState | null>(null)
+  const popupToken = useRef(0)
+
+  const closeWordPopup = useCallback(() => {
+    popupToken.current++
+    setWordPopup(null)
+  }, [])
+
+  const showWordPopup = useCallback((index: number, word: string, isBulgarian: boolean, x: number, y: number) => {
+    const token = ++popupToken.current
+    setWordPopup({ index, x, y, word, result: 'loading' })
+    translateWord(word, isBulgarian).then(
+      (t) => { if (popupToken.current === token) setWordPopup((p) => (p ? { ...p, result: 'done', text: t } : p)) },
+      () => { if (popupToken.current === token) setWordPopup((p) => (p ? { ...p, result: 'err' } : p)) }
+    )
+  }, [])
 
   const flush = useCallback((s: ReaderState) => {
     if (!s.bookId || !s.book) return
@@ -418,7 +451,8 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     markAsReadAndNext, markAsUnread, onUserScrolled, setCurrentPair,
     goToPrevChapter, goToNextChapter,
     toggleTheme, toggleColumns, toggleExpandMode, expandColumn, setFontSize,
-    toggleSpeak, startContinuousReading, stopSpeaking, translateWordAction, dismissError
+    toggleSpeak, startContinuousReading, stopSpeaking, translateWordAction, dismissError,
+    wordPopup, showWordPopup, closeWordPopup
   }
 
   return <ReaderContext.Provider value={value}>{children}</ReaderContext.Provider>

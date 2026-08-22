@@ -3,6 +3,8 @@ import type { RenderRow } from '../types'
 import type { ExpandMode } from '../store/settings'
 import PairRowContent from './PairRowContent'
 
+const ESTIMATED_ROW = 120
+
 // Renders every row once, off-screen but with the exact same markup and width
 // the reader uses, and reports each row's real height. The reader list then
 // works off this static height map only — it never re-measures rows while the
@@ -41,7 +43,13 @@ function MeasurePass({
       const heights: number[] = new Array(rowsRef.current.length)
       for (let i = 0; i < rowsRef.current.length; i++) {
         const child = root.children[i] as HTMLElement | undefined
-        if (child) heights[i] = child.offsetHeight
+        // Fall back rather than leaving a hole: a missing/zero reading here
+        // (e.g. a row whose text happens to be empty, or one the DOM hasn't
+        // painted yet) used to leave that index sized at 0 or undefined,
+        // which react-window still has to render *some* slot for — visually
+        // that's a blank gap where a real row should be while scrolling.
+        const h = child?.offsetHeight
+        heights[i] = h && h > 0 ? h : ESTIMATED_ROW
       }
       const key = heights.join(',')
       if (key === lastKey) return

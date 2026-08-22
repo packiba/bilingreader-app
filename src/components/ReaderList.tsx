@@ -140,13 +140,24 @@ export default function ReaderList() {
           itemCount={rows.length}
           itemSize={itemSize}
           estimatedItemSize={ESTIMATED_ROW}
-          overscanCount={8}
+          overscanCount={12}
           outerElementType={ScrollOuter}
           onItemsRendered={onItemsRendered}
+          // While actively flinging through a long book, react-window can
+          // scroll past rows faster than React can mount them, which showed
+          // up as bare background flashing through mid-scroll. Swap in a
+          // cheap same-colored placeholder during the scroll instead of the
+          // full two-column row — much less to render per frame, and it
+          // reads as "still there" rather than a hole.
+          useIsScrolling
         >
-          {({ index, style }) => (
+          {({ index, style, isScrolling }) => (
             <div style={style}>
-              <PairRow rows={rows} index={index} />
+              {isScrolling ? (
+                <div className={`rowwrap ${index % 2 === 1 ? 'zebra' : ''}`} style={{ height: '100%' }} />
+              ) : (
+                <PairRow rows={rows} index={index} />
+              )}
             </div>
           )}
         </List>
