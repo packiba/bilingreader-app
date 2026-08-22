@@ -116,8 +116,26 @@ export default function ReaderList() {
     pendingScroll.current = null
   }, [size.width, size.height, rows.length])
 
+  const scrollRafRef = useRef<number | null>(null)
+  const pendingIndexRef = useRef<number | null>(null)
+
+  useEffect(() => () => {
+    if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current)
+  }, [])
+
   const onItemsRendered = useCallback((p: ListOnItemsRenderedProps) => {
-    onUserScrolled(p.visibleStartIndex)
+    // react-window can call this many times within a single scroll gesture
+    // (once per items-range change, which on a long book can be almost
+    // every frame). Each call used to dispatch immediately, and every
+    // dispatch re-renders the whole reader tree — competing with the
+    // browser's own scroll/compositing work on the same frame budget.
+    // Coalesce to at most one dispatch per animation frame.
+    pendingIndexRef.current = p.visibleStartIndex
+    if (scrollRafRef.current != null) return
+    scrollRafRef.current = requestAnimationFrame(() => {
+      scrollRafRef.current = null
+      if (pendingIndexRef.current != null) onUserScrolled(pendingIndexRef.current)
+    })
   }, [onUserScrolled])
 
   return (

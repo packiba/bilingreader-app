@@ -142,6 +142,34 @@ export interface WordPopupState {
   text?: string
 }
 
+// PairRow needs a slice of this, but never the fast-changing bits
+// (currentPair/scrollRequest tick on essentially every scroll frame).
+// It gets that slice from RowContext below instead, so a scroll-position
+// update doesn't force every visible row to re-render for no reason.
+export interface RowContextValue {
+  dark: boolean
+  fontSize: number
+  expandMode: ExpandMode
+  speakingPair: number | null
+  isContinuousReading: boolean
+  isRead: (index: number) => boolean
+  markAsReadAndNext: (index: number) => void
+  markAsUnread: (index: number) => void
+  toggleSpeak: (index: number) => void
+  startContinuousReading: (index: number) => void
+  wordPopup: WordPopupState | null
+  showWordPopup: (index: number, word: string, isBulgarian: boolean, x: number, y: number) => void
+  closeWordPopup: () => void
+}
+
+const RowContext = createContext<RowContextValue | null>(null)
+
+export function useReaderRow(): RowContextValue {
+  const ctx = useContext(RowContext)
+  if (!ctx) throw new Error('useReaderRow must be used within ReaderProvider')
+  return ctx
+}
+
 interface ReaderContextValue {
   state: ReaderState
   rows: RenderRow[]
@@ -444,9 +472,30 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
 
   const dismissError = useCallback(() => dispatch({ type: 'SET_ERROR', message: null }), [])
 
+  // Identity only changes when readThrough/readExceptions actually change —
+  // not on every scroll tick — since those are the only two fields this
+  // reads. stateRef is always current, so there's no staleness risk even
+  // though the memo won't rerun on unrelated state changes.
+  const isReadFn = useCallback((index: number) => isRead(stateRef.current, index), [state.readThrough, state.readExceptions])
+
+  const rowValue: RowContextValue = useMemo(() => ({
+    dark: state.dark,
+    fontSize: state.fontSize,
+    expandMode: state.expandMode,
+    speakingPair: state.speakingPair,
+    isContinuousReading: state.isContinuousReading,
+    isRead: isReadFn,
+    markAsReadAndNext, markAsUnread, toggleSpeak, startContinuousReading,
+    wordPopup, showWordPopup, closeWordPopup
+  }), [
+    state.dark, state.fontSize, state.expandMode, state.speakingPair, state.isContinuousReading,
+    isReadFn, markAsReadAndNext, markAsUnread, toggleSpeak, startContinuousReading,
+    wordPopup, showWordPopup, closeWordPopup
+  ])
+
   const value: ReaderContextValue = {
     state, rows, chapterStarts,
-    isRead: (index) => isRead(state, index),
+    isRead: isReadFn,
     importFile, openBook, deleteBook, closeBook,
     markAsReadAndNext, markAsUnread, onUserScrolled, setCurrentPair,
     goToPrevChapter, goToNextChapter,
@@ -455,5 +504,11 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     wordPopup, showWordPopup, closeWordPopup
   }
 
-  return <ReaderContext.Provider value={value}>{children}</ReaderContext.Provider>
+  return (
+    <ReaderContext.Provider value={value}>
+      <RowContext.Provider value={rowValue}>
+        {children}
+      </RowContext.Provider>
+    </ReaderContext.Provider>
+  )
 }
