@@ -79,8 +79,6 @@ body {
 .sidebar .chapter { padding: 8px; border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1.4; }
 .sidebar .chapter:active { background: var(--zebra2); }
 .sidebar .chapter.cur { color: var(--accent); }
-/* tap-away layer that closes the translation popup */
-.popup-scrim { position: fixed; inset: 0; z-index: 59; background: transparent; }
 /* popup (translation) */
 .popup { position: fixed; z-index: 60; background: var(--zebra2); border: 1px solid var(--divider); border-radius: 10px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35); max-width: 240px; min-width: 140px; }
 .popup .wrap { padding: 8px 12px; }
