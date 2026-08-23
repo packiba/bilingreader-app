@@ -30,11 +30,23 @@ local.properties
 # Log files
 *.log
 
-# JSON data files (assuming they are sample data and not part of the source)
-# aligned_pairs_book.json
-# final_aligned_book.json
+# PWA
+pwa/node_modules/
+pwa/dist/
+pwa/*.local
+pwa/*.tsbuildinfo
 
-# If you want to exclude these specific files, uncomment the lines above.
-# Given they are in the root and large, maybe they should be ignored?
-# But for now I will leave them commented out to let user decide,
-# or I will just include them if I'm not sure.
+# Root duplicates (actual project lives in pwa/)
+node_modules/
+dist/
+*.local
+*.tsbuildinfo
+src/
+public/
+vite.config.ts
+tsconfig*.json
+package.json
+package-lock.json
+index.html
+preview.log
+
