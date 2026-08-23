@@ -380,7 +380,11 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
   const onUserScrolled = useCallback((index: number) => {
     dispatch({ type: 'USER_SCROLLED', index })
     schedulePersist()
-  }, [schedulePersist])
+    // The popup is positioned at fixed screen coordinates, not tied to the
+    // row it came from, so it would visually detach from the text as soon
+    // as the list moves. Close it instead of leaving it floating in place.
+    closeWordPopup()
+  }, [schedulePersist, closeWordPopup])
 
   const setCurrentPair = useCallback((index: number, isSlow = false) => {
     const s = stateRef.current
