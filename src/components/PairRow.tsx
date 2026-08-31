@@ -44,7 +44,7 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
     if (!g || e.target instanceof Element && (e.target as Element).closest('.speakerbtn')) return
     const dxv = e.clientX - g.sx
     const dyv = e.clientY - g.sy
-    if (!g.active && Math.hypot(dxv, dyv) > 8) {
+    if (!g.active && Math.hypot(dxv, dyv) > 14) {
       g.active = true
       g.moved = true
     }
