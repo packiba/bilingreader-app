@@ -62,6 +62,23 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
     }
   }
 
+  const lastTapHandledAt = useRef(0)
+
+  const tryOpenWord = (clientX: number, clientY: number, target: Element | null) => {
+    if (!target) return
+    const textEl = target.closest('.rowtext, .chapterhead')
+    if (textEl) {
+      const word = wordAtPoint(textEl, clientX, clientY)
+      if (word) {
+        const isBulgarian = !!target.closest('.bglang')
+        const x = Math.max(8, Math.min(clientX, window.innerWidth - 250))
+        const y = Math.min(clientY + 12, window.innerHeight - 120)
+        reader.showWordPopup(index, word, isBulgarian, x, y)
+        lastTapHandledAt.current = performance.now()
+      }
+    }
+  }
+
   const onPointerUp = (e: React.PointerEvent) => {
     const g = gesture.current
     gesture.current = null
@@ -69,21 +86,28 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
     if (!g || g.moved) return
     const target = e.target instanceof Element ? e.target : null
     if (!target || (e.pointerType !== 'touch' && e.pointerType !== 'pen')) return
-    const textEl = target.closest('.rowtext, .chapterhead')
-    if (textEl) {
-      const word = wordAtPoint(textEl, e.clientX, e.clientY)
-      if (word) {
-        const isBulgarian = !!target.closest('.bglang')
-        const x = Math.max(8, Math.min(e.clientX, window.innerWidth - 250))
-        const y = Math.min(e.clientY + 12, window.innerHeight - 120)
-        reader.showWordPopup(index, word, isBulgarian, x, y)
-      }
-    }
+    tryOpenWord(e.clientX, e.clientY, target)
   }
 
   const onPointerCancel = () => {
     gesture.current = null
     setDx(0)
+  }
+
+  // WebKit/iOS occasionally decides a still finger is the start of the
+  // page's own vertical scroll (touch-action: pan-y invites this) and
+  // cancels the pointer sequence instead of delivering pointerup — so the
+  // logic above silently never runs, even though nothing actually scrolled
+  // and the user experiences it as a plain tap doing nothing. A native
+  // click event is far more reliably delivered by Safari for a genuine tap
+  // even in that case, so it's used here as a fallback. Guarded against
+  // double-firing (the pointer path already handled it a moment earlier)
+  // and against firing on a real drag/swipe, which browsers don't follow
+  // with a synthesized click.
+  const onClick = (e: React.MouseEvent) => {
+    if (performance.now() - lastTapHandledAt.current < 500) return
+    if (e.target instanceof Element && e.target.closest('.speakerbtn, .popup')) return
+    tryOpenWord(e.clientX, e.clientY, e.target instanceof Element ? e.target : null)
   }
 
   const onSpeakerDown = (e: React.PointerEvent) => {
@@ -124,6 +148,7 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerCancel}
+      onClick={onClick}
     >
       <PairRowContent
         rows={rows}
