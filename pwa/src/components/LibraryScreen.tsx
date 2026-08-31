@@ -47,6 +47,7 @@ export default function LibraryScreen() {
           </div>
         )}
         <InstallHint />
+        <div style={{ textAlign: 'center', marginTop: 16, fontSize: 11, opacity: 0.4 }}>build {__BUILD_TAG__}</div>
       </div>
       {state.error && <div className="snackbar" onClick={dismissError}>{state.error}</div>}
       {state.isLoading && <div className="snackbar">Загрузка…</div>}
