@@ -3,7 +3,7 @@
 // available, which events actually reach the app when the user taps a word —
 // instead of continuing to guess from a desktop simulation that can't
 // reproduce real finger jitter.
-const MAX_ENTRIES = 8
+const MAX_ENTRIES = 14
 let entries: string[] = []
 
 export function pushTapLog(entry: string) {
