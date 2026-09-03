@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   base: '/bilingreader-app/',
   define: {
-    __BUILD_TAG__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' '))
+    __BUILD_TAG__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC')
   },
   plugins: [
     react(),
