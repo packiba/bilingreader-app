@@ -1,4 +1,5 @@
 import { memo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { RenderRow } from '../types'
 import { useReaderRow } from '../store/ReaderProvider'
 import { IconSpeaker, IconStop } from './icons'
@@ -201,7 +202,7 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
           </button>
         }
       />
-      {popup && (
+      {popup && createPortal(
         <div className="popup" style={{ left: popup.x, top: popup.y }} onClick={() => reader.closeWordPopup()}>
           <div className="wrap">
             <div className="word">{popup.word}</div>
@@ -209,7 +210,8 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
             {popup.result === 'done' && <div className="body">{popup.text}</div>}
             {popup.result === 'err' && <div className="err">Не удалось перевести</div>}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
