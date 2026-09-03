@@ -13,6 +13,7 @@ interface GestureState {
   t0: number
   active: boolean
   moved: boolean
+  target: Element | null
 }
 
 function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
@@ -36,7 +37,8 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.target instanceof Element && e.target.closest('.speakerbtn')) return
-    gesture.current = { sx: e.clientX, sy: e.clientY, t0: performance.now(), active: false, moved: false }
+    const target = e.target instanceof Element ? e.target : null
+    gesture.current = { sx: e.clientX, sy: e.clientY, t0: performance.now(), active: false, moved: false, target }
   }
 
   const onPointerMove = (e: React.PointerEvent) => {
@@ -89,9 +91,27 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
     tryOpenWord(e.clientX, e.clientY, target)
   }
 
+  const CANCEL_AS_TAP_MS = 300
+
   const onPointerCancel = () => {
+    // touch-action: pan-y exists so vertical scrolling stays native/smooth,
+    // but that same setting lets the browser claim ANY touch with even a
+    // couple of pixels of natural finger jitter as "the user is starting to
+    // scroll" — and once it does, it fires pointercancel instead of
+    // pointerup, with no compatibility click afterwards either. On a real
+    // touchscreen this happens on nearly every tap (fingers always jitter a
+    // little); a mouse or an automated test never jitters, which is why the
+    // pointerup/click path above works perfectly there and nowhere else.
+    // If the cancel arrives almost immediately and the pointer hadn't
+    // already moved past the swipe-detection threshold, it's actually a tap
+    // that got misclassified as a scroll — so open the word using the
+    // coordinates captured at pointerdown, before any claim happened.
+    const g = gesture.current
     gesture.current = null
     setDx(0)
+    if (g && !g.moved && performance.now() - g.t0 < CANCEL_AS_TAP_MS) {
+      tryOpenWord(g.sx, g.sy, g.target)
+    }
   }
 
   // WebKit/iOS occasionally decides a still finger is the start of the
@@ -112,7 +132,7 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
 
   const onSpeakerDown = (e: React.PointerEvent) => {
     e.stopPropagation()
-    speakerGesture.current = { sx: e.clientX, sy: e.clientY, t0: performance.now(), active: false, moved: false }
+    speakerGesture.current = { sx: e.clientX, sy: e.clientY, t0: performance.now(), active: false, moved: false, target: null }
     longPressFired.current = false
   }
 
