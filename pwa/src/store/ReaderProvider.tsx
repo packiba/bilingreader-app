@@ -119,8 +119,20 @@ function reducer(s: ReaderState, a: Action): ReaderState {
         readExceptions: s.readExceptions.filter((i) => i > clamped)
       }
     }
-    case 'UNREAD':
-      return a.index <= s.readThrough ? { ...s, readExceptions: [...new Set([...s.readExceptions, a.index])] } : s
+    case 'UNREAD': {
+      // "Unread" cascades forward: everything from this row through the end
+      // of the book goes back to unread, not just this one row — done by
+      // pulling the readThrough high-water mark back to just before this
+      // index, since isRead() already treats anything past readThrough as
+      // unread. Exceptions at or past the new mark are redundant once it's
+      // moved, so they're dropped along with it.
+      if (a.index > s.readThrough) return s
+      return {
+        ...s,
+        readThrough: a.index - 1,
+        readExceptions: s.readExceptions.filter((i) => i < a.index)
+      }
+    }
     case 'FONT': return { ...s, fontSize: a.size }
     case 'THEME': return { ...s, dark: a.dark }
     case 'COLUMNS': return { ...s, columnsSwapped: a.swapped }
