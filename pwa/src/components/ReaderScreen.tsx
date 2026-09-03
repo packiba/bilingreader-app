@@ -7,6 +7,7 @@ import {
 import ReaderList from './ReaderList'
 import PageSlider from './PageSlider'
 import ChapterSidebar from './ChapterSidebar'
+import TapDebugOverlay from '../debug/TapDebugOverlay'
 
 export default function ReaderScreen() {
   const reader = useReader()
@@ -96,6 +97,7 @@ export default function ReaderScreen() {
 
       {showSidebar && <ChapterSidebar onClose={() => setShowSidebar(false)} />}
       {state.error && <div className="snackbar" onClick={dismissError}>{state.error}</div>}
+      <TapDebugOverlay />
     </div>
   )
 }

@@ -3,6 +3,7 @@ import type { RenderRow } from '../types'
 import { useReaderRow } from '../store/ReaderProvider'
 import { IconSpeaker, IconStop } from './icons'
 import PairRowContent from './PairRowContent'
+import { pushTapLog } from '../debug/tapLog'
 
 const SWIPE_THRESHOLD = 48
 const LONG_PRESS_MS = 600
@@ -38,6 +39,7 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.target instanceof Element && e.target.closest('.speakerbtn')) return
     const target = e.target instanceof Element ? e.target : null
+    pushTapLog(`down  type=${e.pointerType} @${e.clientX.toFixed(0)},${e.clientY.toFixed(0)}`)
     gesture.current = { sx: e.clientX, sy: e.clientY, t0: performance.now(), active: false, moved: false, target }
   }
 
@@ -49,6 +51,7 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
     if (!g.active && Math.hypot(dxv, dyv) > 14) {
       g.active = true
       g.moved = true
+      pushTapLog(`move  became drag, Δ=${Math.hypot(dxv, dyv).toFixed(0)}px`)
     }
     if (g.active) {
       if (Math.abs(dxv) > Math.abs(dyv) && Math.abs(dxv) > SWIPE_THRESHOLD) {
@@ -67,27 +70,29 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
   const lastTapHandledAt = useRef(0)
 
   const tryOpenWord = (clientX: number, clientY: number, target: Element | null) => {
-    if (!target) return
+    if (!target) { pushTapLog('tryOpenWord: no target'); return }
     const textEl = target.closest('.rowtext, .chapterhead')
-    if (textEl) {
-      const word = wordAtPoint(textEl, clientX, clientY)
-      if (word) {
-        const isBulgarian = !!target.closest('.bglang')
-        const x = Math.max(8, Math.min(clientX, window.innerWidth - 250))
-        const y = Math.min(clientY + 12, window.innerHeight - 120)
-        reader.showWordPopup(index, word, isBulgarian, x, y)
-        lastTapHandledAt.current = performance.now()
-      }
-    }
+    if (!textEl) { pushTapLog(`tryOpenWord: target isn't inside .rowtext (${target.className || target.tagName})`); return }
+    const word = wordAtPoint(textEl, clientX, clientY)
+    if (!word) { pushTapLog('tryOpenWord: wordAtPoint found nothing'); return }
+    const isBulgarian = !!target.closest('.bglang')
+    const x = Math.max(8, Math.min(clientX, window.innerWidth - 250))
+    const y = Math.min(clientY + 12, window.innerHeight - 120)
+    reader.showWordPopup(index, word, isBulgarian, x, y)
+    lastTapHandledAt.current = performance.now()
+    pushTapLog(`OPENED popup word="${word}"`)
   }
 
   const onPointerUp = (e: React.PointerEvent) => {
     const g = gesture.current
     gesture.current = null
     setDx(0)
-    if (!g || g.moved) return
+    if (!g) { pushTapLog('up    (no gesture state)'); return }
+    if (g.moved) { pushTapLog('up    ignored: was a drag'); return }
     const target = e.target instanceof Element ? e.target : null
-    if (!target || (e.pointerType !== 'touch' && e.pointerType !== 'pen')) return
+    if (!target) { pushTapLog('up    ignored: no target'); return }
+    if (e.pointerType !== 'touch' && e.pointerType !== 'pen') { pushTapLog(`up    ignored: pointerType=${e.pointerType}`); return }
+    pushTapLog(`up    type=${e.pointerType} @${e.clientX.toFixed(0)},${e.clientY.toFixed(0)}`)
     tryOpenWord(e.clientX, e.clientY, target)
   }
 
@@ -109,9 +114,13 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
     const g = gesture.current
     gesture.current = null
     setDx(0)
-    if (g && !g.moved && performance.now() - g.t0 < CANCEL_AS_TAP_MS) {
-      tryOpenWord(g.sx, g.sy, g.target)
+    if (!g) { pushTapLog('cancel (no gesture state)'); return }
+    if (g.moved || performance.now() - g.t0 >= CANCEL_AS_TAP_MS) {
+      pushTapLog(`cancel ignored: moved=${g.moved} age=${(performance.now() - g.t0).toFixed(0)}ms`)
+      return
     }
+    pushTapLog(`cancel treating as tap @${g.sx.toFixed(0)},${g.sy.toFixed(0)}`)
+    tryOpenWord(g.sx, g.sy, g.target)
   }
 
   // WebKit/iOS occasionally decides a still finger is the start of the
@@ -125,8 +134,9 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
   // and against firing on a real drag/swipe, which browsers don't follow
   // with a synthesized click.
   const onClick = (e: React.MouseEvent) => {
-    if (performance.now() - lastTapHandledAt.current < 500) return
-    if (e.target instanceof Element && e.target.closest('.speakerbtn, .popup')) return
+    if (performance.now() - lastTapHandledAt.current < 500) { pushTapLog('click ignored: already handled'); return }
+    if (e.target instanceof Element && e.target.closest('.speakerbtn, .popup')) { pushTapLog('click ignored: on speaker/popup'); return }
+    pushTapLog(`click @${e.clientX.toFixed(0)},${e.clientY.toFixed(0)}`)
     tryOpenWord(e.clientX, e.clientY, e.target instanceof Element ? e.target : null)
   }
 
