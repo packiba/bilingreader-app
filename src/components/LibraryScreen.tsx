@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { useReader } from '../store/ReaderProvider'
 import { IconOpenFolder } from './icons'
 import InstallHint from './InstallHint'
@@ -6,6 +6,8 @@ import InstallHint from './InstallHint'
 export default function LibraryScreen() {
   const { state, importFile, openBook, deleteBook, dismissError } = useReader()
   const inputRef = useRef<HTMLInputElement>(null)
+  const [dragOver, setDragOver] = useState(false)
+  const dragDepth = useRef(0)
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
@@ -13,9 +15,33 @@ export default function LibraryScreen() {
     if (f) void importFile(f)
   }
 
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    const f = e.dataTransfer.files?.[0]
+    if (f && (f.name.endsWith('.json') || f.name.endsWith('.blb'))) void importFile(f)
+  }
+
   return (
     <div className={`app ${state.dark ? 'theme-dark' : 'theme-light'}`}>
-      <div className="lib">
+      <div
+        className="lib"
+        data-drag={dragOver ? '' : undefined}
+        onDragEnter={(e) => {
+          e.preventDefault()
+          dragDepth.current++
+          setDragOver(true)
+        }}
+        onDragOver={(e) => e.preventDefault()}
+        onDragLeave={() => {
+          dragDepth.current--
+          if (dragDepth.current <= 0) {
+            dragDepth.current = 0
+            setDragOver(false)
+          }
+        }}
+        onDrop={onDrop}
+      >
         <h1>Библиотека</h1>
         <div className="grid">
           <div
