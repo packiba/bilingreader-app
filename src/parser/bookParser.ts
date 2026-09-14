@@ -1,4 +1,4 @@
-import type { AlignedPair, Book, BookNode, Chapter, RenderRow } from '../types'
+import type { AlignedPair, Book, BookCover, BookMeta, BookNode, Chapter, RenderRow } from '../types'
 import { displayTitleSrc, displayTitleTgt } from '../types'
 
 function optString(obj: Record<string, unknown>, key: string): string | null {
@@ -86,8 +86,8 @@ function flatten(nodes: BookNode[]): Chapter[] {
   return out
 }
 
-function parseFlat(root: Array<Record<string, unknown>>): Book {
-  const chapters: Chapter[] = root.map((obj, i) => ({
+function chaptersFromFlat(root: Array<Record<string, unknown>>): Chapter[] {
+  return root.map((obj, i) => ({
     pairNum: numberOrNull(obj['pair_num']) ?? i + 1,
     titleSrc: optString(obj, 'title_src'),
     titleTgt: optString(obj, 'title_tgt'),
@@ -95,12 +95,46 @@ function parseFlat(root: Array<Record<string, unknown>>): Book {
     pathSrc: [],
     pathTgt: []
   }))
-  return finalizeBook({ roots: [], chapters })
+}
+
+function parseFlat(root: Array<Record<string, unknown>>): Book {
+  return finalizeBook({ roots: [], chapters: chaptersFromFlat(root) })
 }
 
 function parseNested(root: Array<Record<string, unknown>>): Book {
   const nodes = root.map(parseNode)
   return finalizeBook({ roots: nodes, chapters: flatten(nodes) })
+}
+
+function parseBookMeta(obj: unknown): BookMeta | null {
+  if (obj === null || typeof obj !== 'object') return null
+  const b = obj as Record<string, unknown>
+  return {
+    titleSrc: optString(b, 'title_src'),
+    titleTgt: optString(b, 'title_tgt'),
+    author: optString(b, 'author'),
+    langSrc: optString(b, 'lang_src'),
+    langTgt: optString(b, 'lang_tgt')
+  }
+}
+
+function parseCover(obj: unknown): BookCover | null {
+  if (obj === null || typeof obj !== 'object') return null
+  const c = obj as Record<string, unknown>
+  const mime = optString(c, 'mime')
+  const dataBase64 = optString(c, 'data_base64')
+  if (!mime || !dataBase64) return null
+  return { mime, width: numberOrNull(c['width']), height: numberOrNull(c['height']), dataBase64 }
+}
+
+// The BLB format: a JSON object (not an array) with `book` metadata, an
+// embedded `cover` image, and `chapters` in the same flat shape as the
+// legacy pair_num/title_src/title_tgt/pairs format.
+function parseBlb(root: Record<string, unknown>): Book {
+  const chapters = objArray(root['chapters'])
+  if (chapters.length === 0) throw new Error('Файл не содержит глав')
+  const book = finalizeBook({ roots: [], chapters: chaptersFromFlat(chapters) })
+  return { ...book, meta: parseBookMeta(root['book']), cover: parseCover(root['cover']) }
 }
 
 function finalizeBook(partial: { roots: BookNode[]; chapters: Chapter[] }): Book {
@@ -109,7 +143,9 @@ function finalizeBook(partial: { roots: BookNode[]; chapters: Chapter[] }): Book
     roots: partial.roots,
     chapters: partial.chapters,
     totalPairs,
-    bulgarianPairs: partial.chapters.flatMap((c) => c.pairs.map((p) => p.tgt))
+    bulgarianPairs: partial.chapters.flatMap((c) => c.pairs.map((p) => p.tgt)),
+    meta: null,
+    cover: null
   }
 }
 
@@ -120,7 +156,13 @@ export function parseBook(jsonText: string): Book {
   } catch {
     throw new Error('Не удалось прочитать файл: некорректный JSON')
   }
-  if (!Array.isArray(data) || data.length === 0) {
+  if (!Array.isArray(data)) {
+    if (data !== null && typeof data === 'object' && 'chapters' in (data as Record<string, unknown>)) {
+      return parseBlb(data as Record<string, unknown>)
+    }
+    throw new Error('Файл должен быть JSON-массивом глав или книгой в формате BLB')
+  }
+  if (data.length === 0) {
     throw new Error('Файл должен быть JSON-массивом глав')
   }
   const root = data as Array<Record<string, unknown>>

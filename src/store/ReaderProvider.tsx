@@ -338,7 +338,20 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
       const text = await file.text()
       const book = parseBook(text)
       const id = `${file.name}-${Date.now()}`
-      await db.putBook({ id, name: file.name.replace(/\.json$/i, ''), rawJson: text, importedAt: Date.now(), totalPairs: book.totalPairs })
+      const name = file.name.replace(/\.(json|blb)$/i, '')
+      const title = book.meta?.titleTgt || book.meta?.titleSrc || undefined
+      const author = book.meta?.author || undefined
+      const coverDataUrl = book.cover ? `data:${book.cover.mime};base64,${book.cover.dataBase64}` : undefined
+      await db.putBook({
+        id,
+        name,
+        rawJson: text,
+        importedAt: Date.now(),
+        totalPairs: book.totalPairs,
+        title,
+        author,
+        coverDataUrl
+      })
       const books = await db.getBooks()
       dispatch({ type: 'SET_BOOKS', books })
       await openBook(id)

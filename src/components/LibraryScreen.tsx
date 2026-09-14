@@ -23,16 +23,22 @@ export default function LibraryScreen() {
             style={{ cursor: 'pointer', alignItems: 'flex-start', justifyContent: 'center', borderStyle: 'dashed' }}
             onClick={() => inputRef.current?.click()}
           >
-            <input ref={inputRef} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={onPick} />
+            <input ref={inputRef} type="file" accept=".json,.blb,application/json" style={{ display: 'none' }} onChange={onPick} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <IconOpenFolder size={22} color="var(--accent)" />
-              <span>Открыть JSON-файл</span>
+              <span>Открыть файл (.json / .blb)</span>
             </div>
             {state.isImporting && <div className="meta">Открываю…</div>}
           </div>
           {state.books.map((b) => (
             <div className="card" key={b.id}>
-              <div className="title">{b.name}</div>
+              {b.coverDataUrl && (
+                <div className="cover-wrap">
+                  <img className="cover" src={b.coverDataUrl} alt="" />
+                </div>
+              )}
+              <div className="title">{b.title || b.name}</div>
+              {b.author && <div className="meta">{b.author}</div>}
               <div className="meta">{b.totalPairs} пар</div>
               <div className="actions">
                 <button className="btn primary" onClick={() => void openBook(b.id)}>Читать</button>
@@ -43,7 +49,7 @@ export default function LibraryScreen() {
         </div>
         {state.books.length === 0 && (
           <div className="empty">
-            Книг пока нет.<br />Нажмите «Открыть JSON-файл» и выберите книгу в Файлах.
+            Книг пока нет.<br />Нажмите «Открыть файл» и выберите книгу (.json или .blb) в Файлах.
           </div>
         )}
         <InstallHint />
