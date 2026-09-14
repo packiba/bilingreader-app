@@ -41,11 +41,32 @@ export interface ContainerNode {
 
 export type BookNode = ContainerNode | ChapterNode
 
+export interface BookMeta {
+  titleSrc: string | null
+  titleTgt: string | null
+  author: string | null
+  langSrc: string | null
+  langTgt: string | null
+}
+
+export interface BookCover {
+  mime: string
+  width: number | null
+  height: number | null
+  dataBase64: string
+}
+
+export function coverDataUrl(cover: BookCover): string {
+  return `data:${cover.mime};base64,${cover.dataBase64}`
+}
+
 export interface Book {
   roots: BookNode[]
   chapters: Chapter[]
   totalPairs: number
   bulgarianPairs: string[]
+  meta: BookMeta | null
+  cover: BookCover | null
 }
 
 export interface RenderRow {

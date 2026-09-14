@@ -36,6 +36,9 @@ export interface StoredBook {
   rawJson: string
   importedAt: number
   totalPairs: number
+  title?: string
+  author?: string
+  coverDataUrl?: string
 }
 
 export interface BookProgress {

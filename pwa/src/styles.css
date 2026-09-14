@@ -49,6 +49,8 @@ body {
 .card .title { font-weight: 600; font-size: 15px; word-break: break-word; }
 .card .meta { font-size: 12px; opacity: 0.7; }
 .card .actions { display: flex; gap: 8px; }
+.card .cover-wrap { margin: -14px -14px 0; border-radius: 10px 10px 0 0; overflow: hidden; background: var(--divider); }
+.card .cover { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; }
 .btn { padding: 8px 14px; border: 1px solid var(--divider); border-radius: 8px; background: var(--zebra2); color: var(--text-active); font-size: 14px; }
 .btn:active { filter: brightness(1.2); }
 .btn.primary { background: var(--accent); color: #fff; border-color: transparent; }
