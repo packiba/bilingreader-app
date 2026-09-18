@@ -57,7 +57,7 @@ export default function LibraryScreen() {
             {state.isImporting && <div className="meta">Открываю…</div>}
           </div>
           {state.books.map((b) => (
-            <div className="card" key={b.id}>
+            <div className="card" key={b.id} style={{ cursor: 'pointer' }} onClick={() => void openBook(b.id)}>
               {b.coverDataUrl && (
                 <div className="cover-wrap">
                   <img className="cover" src={b.coverDataUrl} alt="" />
@@ -67,8 +67,7 @@ export default function LibraryScreen() {
               {b.author && <div className="meta">{b.author}</div>}
               <div className="meta">{b.totalPairs} пар</div>
               <div className="actions">
-                <button className="btn primary" onClick={() => void openBook(b.id)}>Читать</button>
-                <button className="btn" onClick={() => void deleteBook(b.id)}>Удалить</button>
+                <button className="btn" onClick={(e) => { e.stopPropagation(); void deleteBook(b.id) }}>Удалить</button>
               </div>
             </div>
           ))}
