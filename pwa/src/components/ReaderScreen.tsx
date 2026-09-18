@@ -82,7 +82,7 @@ export default function ReaderScreen() {
               <IconPrev size={18} />
             </button>
           )}
-          <PageSlider onDragPreview={setPreview} />
+          <PageSlider onDragPreview={setPreview} disabled={!showToolbar} />
           {showToolbar && (
             <button className="iconbtn" title="Следующая глава" onClick={reader.goToNextChapter}>
               <IconNext size={18} />
