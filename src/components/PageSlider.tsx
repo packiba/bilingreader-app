@@ -13,6 +13,7 @@ export default function PageSlider({ onDragPreview }: { onDragPreview?: (index: 
   const total = Math.max(state.book.totalPairs, 1)
   const shown = drag ? dragVal : clamp(state.currentPair, total - 1)
   const pct = total > 1 ? (shown / (total - 1)) * 100 : 0
+  const readPct = total > 1 ? (Math.max(0, state.readThrough) / (total - 1)) * 100 : 0
 
   const indexFromClientX = (clientX: number) => {
     const rect = trackRef.current?.getBoundingClientRect()
@@ -57,6 +58,7 @@ export default function PageSlider({ onDragPreview }: { onDragPreview?: (index: 
     >
       <div className="slidervis" aria-hidden>
         <div className="trackline" />
+        <div className="trackread" style={{ width: `${readPct}%` }} />
         {chapterStarts.map((s) => (
           <div key={s} className="tick" style={{ left: `${total > 1 ? (s / (total - 1)) * 100 : 0}%` }} />
         ))}
