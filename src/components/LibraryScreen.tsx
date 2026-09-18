@@ -4,7 +4,7 @@ import { IconOpenFolder } from './icons'
 import InstallHint from './InstallHint'
 
 export default function LibraryScreen() {
-  const { state, importFile, openBook, deleteBook, dismissError } = useReader()
+  const { state, importFile, openBook, deleteBook, backToBook, dismissError } = useReader()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragOver, setDragOver] = useState(false)
   const dragDepth = useRef(0)
@@ -42,7 +42,12 @@ export default function LibraryScreen() {
         }}
         onDrop={onDrop}
       >
-        <h1>Библиотека</h1>
+        <h1
+          style={{ cursor: state.book ? 'pointer' : 'default' }}
+          onClick={() => { if (state.book) backToBook() }}
+        >
+          Библиотека
+        </h1>
         <div className="grid">
           <div
             className="card"

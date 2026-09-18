@@ -11,5 +11,5 @@ export default function App() {
     document.body.classList.toggle('theme-dark', state.dark)
   }, [state.dark])
 
-  return state.book ? <ReaderScreen /> : <LibraryScreen />
+  return state.book && state.screen === 'reader' ? <ReaderScreen /> : <LibraryScreen />
 }
