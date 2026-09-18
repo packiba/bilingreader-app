@@ -74,6 +74,7 @@ body {
 .slidertrack { position: relative; flex: 1; height: 100%; min-width: 0; touch-action: none; cursor: pointer; }
 .slidervis { position: absolute; inset: 0; pointer-events: none; }
 .slidervis .trackline { position: absolute; top: 50%; left: 0; right: 0; height: 4px; transform: translateY(-50%); border-radius: 2px; background: var(--divider); }
+.slidervis .trackread { position: absolute; top: 50%; left: 0; height: 4px; transform: translateY(-50%); border-radius: 2px; background: var(--accent); }
 .slidervis .thumb { position: absolute; top: 50%; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); transform: translate(-50%, -50%); }
 .slidervis .tick { position: absolute; top: 50%; width: 2px; height: 10px; transform: translate(-50%, -50%); background: var(--text-dimmed); }
 /* sidebar overlay */
