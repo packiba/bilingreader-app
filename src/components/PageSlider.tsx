@@ -3,7 +3,7 @@ import { useReader } from '../store/ReaderProvider'
 
 const clamp = (v: number, max: number) => Math.max(0, Math.min(v, max))
 
-export default function PageSlider({ onDragPreview }: { onDragPreview?: (index: number | null) => void }) {
+export default function PageSlider({ onDragPreview, disabled = false }: { onDragPreview?: (index: number | null) => void; disabled?: boolean }) {
   const { state, chapterStarts, setCurrentPair } = useReader()
   const [drag, setDrag] = useState(false)
   const [dragVal, setDragVal] = useState(0)
@@ -28,6 +28,7 @@ export default function PageSlider({ onDragPreview }: { onDragPreview?: (index: 
   }
 
   const onPointerDown = (e: React.PointerEvent) => {
+    if (disabled) return
     e.preventDefault()
     try { trackRef.current?.setPointerCapture(e.pointerId) } catch { /* ignore */ }
     setDrag(true)
@@ -50,7 +51,7 @@ export default function PageSlider({ onDragPreview }: { onDragPreview?: (index: 
   return (
     <div
       ref={trackRef}
-      className="slidertrack"
+      className={disabled ? 'slidertrack disabled' : 'slidertrack'}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={release}
