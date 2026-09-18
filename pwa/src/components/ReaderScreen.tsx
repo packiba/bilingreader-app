@@ -22,7 +22,7 @@ export default function ReaderScreen() {
     <div className={`app ${state.dark ? 'theme-dark' : 'theme-light'}`}>
       {showToolbar && (
         <div className="toolbar">
-          <button className="iconbtn" title="Библиотека" onClick={reader.closeBook}>
+          <button className="iconbtn" title="Библиотека" onClick={reader.openLibrary}>
             <IconLibrary size={18} />
           </button>
           <div className="name">{state.fileName}</div>

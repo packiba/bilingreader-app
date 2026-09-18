@@ -26,6 +26,7 @@ export interface ReaderState {
   isLoading: boolean
   isImporting: boolean
   error: string | null
+  screen: 'reader' | 'library'
   scrollRequest: { index: number; token: number; isSlow: boolean } | null
 }
 
@@ -53,6 +54,7 @@ const initialState: ReaderState = {
   isLoading: false,
   isImporting: false,
   error: null,
+  screen: 'library',
   scrollRequest: null
 }
 
@@ -61,6 +63,7 @@ type Action =
   | { type: 'SET_LOADING'; v: boolean }
   | { type: 'SET_IMPORTING'; v: boolean }
   | { type: 'SET_ERROR'; message: string | null }
+  | { type: 'SCREEN'; screen: 'reader' | 'library' }
   | { type: 'OPENED'; book: Book; bookId: string; fileName: string; progress: db.BookProgress }
   | { type: 'CLOSED' }
   | { type: 'SCROLL'; index: number; isSlow: boolean }
@@ -79,6 +82,7 @@ function reducer(s: ReaderState, a: Action): ReaderState {
     case 'SET_LOADING': return { ...s, isLoading: a.v }
     case 'SET_IMPORTING': return { ...s, isImporting: a.v }
     case 'SET_ERROR': return { ...s, error: a.message }
+    case 'SCREEN': return { ...s, screen: a.screen }
     case 'OPENED': {
       const maxPair = Math.max(a.book.totalPairs - 1, 0)
       const restore = Math.min(a.progress.lastPair, maxPair)
@@ -87,6 +91,7 @@ function reducer(s: ReaderState, a: Action): ReaderState {
         book: a.book,
         bookId: a.bookId,
         fileName: a.fileName,
+        screen: 'reader',
         currentPair: restore,
         readThrough: a.progress.readThrough,
         readExceptions: a.progress.readExceptions,
@@ -190,6 +195,8 @@ interface ReaderContextValue {
   importFile: (file: File) => Promise<void>
   openBook: (id: string) => Promise<void>
   deleteBook: (id: string) => Promise<void>
+  openLibrary: () => void
+  backToBook: () => void
   closeBook: () => void
   markAsReadAndNext: (index: number) => void
   markAsUnread: (index: number) => void
@@ -376,6 +383,14 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: 'CLOSED' })
   }, [flush])
 
+  const openLibrary = useCallback(() => {
+    dispatch({ type: 'SCREEN', screen: 'library' })
+  }, [])
+
+  const backToBook = useCallback(() => {
+    if (stateRef.current.book) dispatch({ type: 'SCREEN', screen: 'reader' })
+  }, [])
+
   const chapterStarts = useMemo(
     () => (state.book ? computeChapterStarts(state.book, state.columnsSwapped) : []),
     [state.book, state.columnsSwapped]
@@ -525,7 +540,7 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
   const value: ReaderContextValue = {
     state, rows, chapterStarts,
     isRead: isReadFn,
-    importFile, openBook, deleteBook, closeBook,
+    importFile, openBook, deleteBook, openLibrary, backToBook, closeBook,
     markAsReadAndNext, markAsUnread, onUserScrolled, setCurrentPair,
     goToPrevChapter, goToNextChapter,
     toggleTheme, toggleColumns, toggleExpandMode, expandColumn, setFontSize,
