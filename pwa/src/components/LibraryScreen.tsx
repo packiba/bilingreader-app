@@ -68,12 +68,9 @@ export default function LibraryScreen() {
                   <img className="cover" src={b.coverDataUrl} alt="" />
                 </div>
               )}
+              <button className="btn delete" onClick={(e) => { e.stopPropagation(); void deleteBook(b.id) }}>Удалить</button>
               <div className="title">{b.title || b.name}</div>
               {b.author && <div className="meta">{b.author}</div>}
-              <div className="meta">{b.totalPairs} пар</div>
-              <div className="actions">
-                <button className="btn" onClick={(e) => { e.stopPropagation(); void deleteBook(b.id) }}>Удалить</button>
-              </div>
             </div>
           ))}
         </div>

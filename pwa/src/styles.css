@@ -47,10 +47,10 @@ body {
 .lib[data-drag] .card { opacity: 0.6; }
 .lib h1 { font-size: 20px; margin: 0 0 16px; }
 .lib .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
-.card { background: var(--zebra2); border: 1px solid var(--divider); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.card { position: relative; background: var(--zebra2); border: 1px solid var(--divider); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
 .card .title { font-weight: 600; font-size: 15px; word-break: break-word; }
 .card .meta { font-size: 12px; opacity: 0.7; }
-.card .actions { display: flex; gap: 8px; }
+.card .delete { position: absolute; top: 8px; right: 8px; z-index: 1; padding: 4px 10px; font-size: 12px; background: rgba(0, 0, 0, 0.55); color: #fff; border: none; backdrop-filter: blur(2px); }
 .card .cover-wrap { margin: -14px -14px 0; border-radius: 10px 10px 0 0; overflow: hidden; background: var(--divider); }
 .card .cover { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; }
 .btn { padding: 8px 14px; border: 1px solid var(--divider); border-radius: 8px; background: var(--zebra2); color: var(--text-active); font-size: 14px; }
@@ -59,20 +59,16 @@ body {
 .empty { color: var(--text-dimmed); font-size: 14px; text-align: center; margin-top: 40px; line-height: 1.6; }
 .hint { margin-top: 24px; font-size: 12px; opacity: 0.65; line-height: 1.5; }
 /* reader cells */
-.cell { display: flex; align-items: stretch; }
-.cell .col { flex: 1; min-width: 0; padding: 4px 14px; }
-.cell .col.left { padding-left: 14px; padding-right: 6px; }
-.cell .col.right { padding-left: 6px; padding-right: 34px; }
-.cell .dividerC { width: 0.5px; background: var(--row-divider); flex: none; }
+.cell, .chapterhead { display: flex; align-items: stretch; }
+.cell .col, .chapterhead .col { flex: 1; min-width: 0; padding: 4px 14px; }
+.cell .col.left, .chapterhead .col.left { padding-left: 14px; padding-right: 6px; }
+.cell .col.right, .chapterhead .col.right { padding-left: 6px; padding-right: 34px; }
+.cell .dividerC, .chapterhead .dividerC { width: 0.5px; background: var(--row-divider); flex: none; }
 .rowwrap { border-bottom: 0.5px solid var(--divider); background: var(--zebra1); position: relative; }
 .rowwrap.zebra { background: var(--zebra2); }
 .rowtext { font-size: 15px; line-height: 1.45; }
 .dimmed .rowtext { color: var(--text-dimmed); }
-.chapterhead { display: flex; align-items: stretch; font-weight: 700; font-size: 15px; padding: 10px 14px; background: var(--zebra1); border-bottom: 0.5px solid var(--divider); }
-.chapterhead .col { flex: 1; min-width: 0; }
-.chapterhead .col.left { padding-right: 6px; }
-.chapterhead .col.right { padding-left: 6px; font-weight: 400; font-size: 0.82em; opacity: 0.7; }
-.chapterhead .dividerC { width: 0.5px; background: var(--row-divider); flex: none; }
+.chapterhead { font-weight: 700; font-size: 15px; padding: 6px 0; background: var(--zebra1); border-bottom: 0.5px solid var(--divider); }
 /* slider */
 .bottombar .count { font-size: 11px; opacity: 0.7; white-space: nowrap; }
 .slidertrack { position: relative; flex: 1; height: 100%; min-width: 0; touch-action: none; cursor: pointer; }
