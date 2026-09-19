@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import { useReader } from '../store/ReaderProvider'
+import { bookDisplayTitle } from '../types'
 import {
   IconCollapse, IconDropdown, IconDropup, IconExpand, IconLibrary, IconMenu,
   IconMinus, IconMoon, IconNext, IconPlus, IconPrev, IconSun, IconSwap
@@ -25,7 +26,7 @@ export default function ReaderScreen() {
           <button className="iconbtn" title="Библиотека" onClick={reader.openLibrary}>
             <IconLibrary size={18} />
           </button>
-          <div className="name">{state.fileName}</div>
+          <div className="name">{state.book ? bookDisplayTitle(state.book, state.fileName) : state.fileName}</div>
           <button className="iconbtn" title="Тема" onClick={reader.toggleTheme}>
             {state.dark ? <IconMoon size={18} /> : <IconSun size={18} />}
           </button>

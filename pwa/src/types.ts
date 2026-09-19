@@ -69,6 +69,13 @@ export interface Book {
   cover: BookCover | null
 }
 
+export function bookDisplayTitle(book: Book, fallback = ''): string {
+  const title = book.meta?.titleTgt ?? book.meta?.titleSrc
+  const author = book.meta?.author
+  const parts = [author, title].filter((p): p is string => p != null && p.trim() !== '')
+  return parts.join(' — ') || fallback
+}
+
 export interface RenderRow {
   idx: number
   showHeader: boolean
