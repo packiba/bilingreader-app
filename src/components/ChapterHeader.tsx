@@ -1,8 +1,21 @@
-export default function ChapterHeader({ titleSrc, titleTgt, fontSize, dark }: { titleSrc: string; titleTgt: string; fontSize: number; dark: boolean }) {
+export default function ChapterHeader({
+  titleSrc,
+  titleTgt,
+  srcIsBg,
+  fontSize,
+  dark
+}: {
+  titleSrc: string
+  titleTgt: string
+  srcIsBg: boolean
+  fontSize: number
+  dark: boolean
+}) {
   return (
     <div className="chapterhead" style={{ fontSize, color: dark ? '#D1D5DB' : '#1F2937' }}>
-      <div>{titleSrc}</div>
-      <div style={{ fontWeight: 400, fontSize: fontSize * 0.82, opacity: 0.7 }}>{titleTgt}</div>
+      <div className={`col left ${srcIsBg ? 'bglang' : 'russian'}`}>{titleSrc}</div>
+      <div className="dividerC" />
+      <div className={`col right ${srcIsBg ? 'russian' : 'bglang'}`}>{titleTgt}</div>
     </div>
   )
 }

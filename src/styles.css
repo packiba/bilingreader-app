@@ -68,7 +68,11 @@ body {
 .rowwrap.zebra { background: var(--zebra2); }
 .rowtext { font-size: 15px; line-height: 1.45; }
 .dimmed .rowtext { color: var(--text-dimmed); }
-.chapterhead { font-weight: 700; font-size: 15px; padding: 10px 14px; background: var(--zebra1); border-bottom: 0.5px solid var(--divider); }
+.chapterhead { display: flex; align-items: stretch; font-weight: 700; font-size: 15px; padding: 10px 14px; background: var(--zebra1); border-bottom: 0.5px solid var(--divider); }
+.chapterhead .col { flex: 1; min-width: 0; }
+.chapterhead .col.left { padding-right: 6px; }
+.chapterhead .col.right { padding-left: 6px; font-weight: 400; font-size: 0.82em; opacity: 0.7; }
+.chapterhead .dividerC { width: 0.5px; background: var(--row-divider); flex: none; }
 /* slider */
 .bottombar .count { font-size: 11px; opacity: 0.7; white-space: nowrap; }
 .slidertrack { position: relative; flex: 1; height: 100%; min-width: 0; touch-action: none; cursor: pointer; }
