@@ -42,6 +42,7 @@ dist/
 *.local
 *.tsbuildinfo
 src/
+!pwa/src/
 public/
 vite.config.ts
 tsconfig*.json

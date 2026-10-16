@@ -2,20 +2,18 @@ import { useRef, useState } from 'react'
 import { useReader } from '../store/ReaderProvider'
 import { bookDisplayTitle } from '../types'
 import {
-  IconCollapse, IconDropdown, IconDropup, IconExpand, IconLang, IconLibrary, IconMenu,
-  IconMinus, IconMoon, IconNext, IconPlus, IconPrev, IconSun, IconSwap
+  IconCollapse, IconDropdown, IconDropup, IconExpand, IconLibrary, IconMenu,
+  IconMinus, IconMoon, IconSpeaker, IconNext, IconPlus, IconPrev, IconSun, IconSwap
 } from './icons'
 import ReaderList from './ReaderList'
 import PageSlider from './PageSlider'
 import ChapterSidebar from './ChapterSidebar'
-import LanguageDialog from './LanguageDialog'
 
 export default function ReaderScreen() {
   const reader = useReader()
   const { state, dismissError } = reader
   const [showToolbar, setShowToolbar] = useState(true)
   const [showSidebar, setShowSidebar] = useState(false)
-  const [showLang, setShowLang] = useState(false)
   const [preview, setPreview] = useState<number | null>(null)
   const touchStart = useRef<{ y: number } | null>(null)
   const currentShown = preview ?? state.currentPair
@@ -29,8 +27,14 @@ export default function ReaderScreen() {
             <IconLibrary size={18} />
           </button>
           <div className="name">{state.book ? bookDisplayTitle(state.book, state.fileName) : state.fileName}</div>
-          <button className="iconbtn" title="Языки книги" onClick={() => setShowLang(true)}>
-            <IconLang size={18} />
+          <button
+            className="iconbtn"
+            style={{ width: 'auto', minWidth: 34, padding: '0 6px', fontSize: 12, fontWeight: 700, gap: 3 }}
+            title="Язык озвучки (нажмите, чтобы переключить)"
+            onClick={() => void reader.setTtsSide(state.ttsSide === 'tgt' ? 'src' : 'tgt')}
+          >
+            <IconSpeaker size={14} />
+            {(state.ttsSide === 'tgt' ? state.langTgt : state.langSrc).toUpperCase()}
           </button>
           <button className="iconbtn" title="Тема" onClick={reader.toggleTheme}>
             {state.dark ? <IconMoon size={18} /> : <IconSun size={18} />}
@@ -101,20 +105,6 @@ export default function ReaderScreen() {
       )}
 
       {showSidebar && <ChapterSidebar onClose={() => setShowSidebar(false)} />}
-      {(showLang || state.needsLangSetup) && (
-        <LanguageDialog
-          langSrc={state.langSrc}
-          langTgt={state.langTgt}
-          ttsSide={state.ttsSide}
-          needsSetup={state.needsLangSetup}
-          onSave={(a, b, side) => { void reader.setLanguages(a, b, side); setShowLang(false) }}
-          onClose={() => {
-            // Closing the first-time prompt keeps the defaults but counts as confirmed.
-            if (state.needsLangSetup) void reader.setLanguages(state.langSrc, state.langTgt, state.ttsSide)
-            setShowLang(false)
-          }}
-        />
-      )}
       {state.error && <div className="snackbar" onClick={dismissError}>{state.error}</div>}
     </div>
   )
