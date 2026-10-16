@@ -33,8 +33,6 @@ export interface ReaderState {
   langSrc: string
   langTgt: string
   ttsSide: 'src' | 'tgt'
-  // The book didn't declare its languages and the user hasn't confirmed them yet.
-  needsLangSetup: boolean
   scrollRequest: { index: number; token: number; isSlow: boolean } | null
 }
 
@@ -66,7 +64,6 @@ const initialState: ReaderState = {
   langSrc: DEFAULT_LANG_SRC,
   langTgt: DEFAULT_LANG_TGT,
   ttsSide: 'tgt',
-  needsLangSetup: false,
   scrollRequest: null
 }
 
@@ -76,8 +73,8 @@ type Action =
   | { type: 'SET_IMPORTING'; v: boolean }
   | { type: 'SET_ERROR'; message: string | null }
   | { type: 'SCREEN'; screen: 'reader' | 'library' }
-  | { type: 'OPENED'; book: Book; bookId: string; fileName: string; progress: db.BookProgress; langSrc: string; langTgt: string; ttsSide: 'src' | 'tgt'; needsLangSetup: boolean }
-  | { type: 'LANGS'; langSrc: string; langTgt: string; ttsSide: 'src' | 'tgt' }
+  | { type: 'OPENED'; book: Book; bookId: string; fileName: string; progress: db.BookProgress; langSrc: string; langTgt: string; ttsSide: 'src' | 'tgt' }
+  | { type: 'TTS_SIDE'; side: 'src' | 'tgt' }
   | { type: 'CLOSED' }
   | { type: 'SCROLL'; index: number; isSlow: boolean }
   | { type: 'USER_SCROLLED'; index: number }
@@ -108,7 +105,6 @@ function reducer(s: ReaderState, a: Action): ReaderState {
         langSrc: a.langSrc,
         langTgt: a.langTgt,
         ttsSide: a.ttsSide,
-        needsLangSetup: a.needsLangSetup,
         currentPair: restore,
         readThrough: a.progress.readThrough,
         readExceptions: a.progress.readExceptions,
@@ -160,7 +156,7 @@ function reducer(s: ReaderState, a: Action): ReaderState {
     case 'COLUMNS': return { ...s, columnsSwapped: a.swapped }
     case 'EXPAND': return { ...s, expandMode: a.mode }
     case 'SPEAK': return { ...s, speakingPair: a.index, isContinuousReading: a.continuous }
-    case 'LANGS': return { ...s, langSrc: a.langSrc, langTgt: a.langTgt, ttsSide: a.ttsSide, needsLangSetup: false, speakingPair: null, isContinuousReading: false }
+    case 'TTS_SIDE': return { ...s, ttsSide: a.side, speakingPair: null, isContinuousReading: false }
   }
 }
 
@@ -233,7 +229,7 @@ interface ReaderContextValue {
   startContinuousReading: (index: number) => void
   stopSpeaking: () => void
   translateWordAction: (word: string, from: string, to: string) => Promise<string>
-  setLanguages: (langSrc: string, langTgt: string, ttsSide: 'src' | 'tgt') => Promise<void>
+  setTtsSide: (side: 'src' | 'tgt') => Promise<void>
   dismissError: () => void
   wordPopup: WordPopupState | null
   showWordPopup: (index: number, word: string, from: string, to: string, x: number, y: number) => void
@@ -369,10 +365,10 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
         bookId: id,
         fileName: stored.name,
         progress,
-        langSrc: stored.langSrc ?? book.langSrc,
-        langTgt: stored.langTgt ?? book.langTgt,
-        ttsSide: stored.ttsSide ?? 'tgt',
-        needsLangSetup: !book.langsFromFile && !stored.langsConfirmed
+        // The language pair is a property of the book itself (BLB metadata).
+        langSrc: book.langSrc,
+        langTgt: book.langTgt,
+        ttsSide: stored.ttsSide ?? 'tgt'
       })
     } catch (e) {
       dispatch({ type: 'SET_LOADING', v: false })
@@ -401,8 +397,7 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
         coverDataUrl,
         langSrc: book.langSrc,
         langTgt: book.langTgt,
-        ttsSide: 'tgt',
-        langsConfirmed: book.langsFromFile
+        ttsSide: 'tgt'
       })
       const books = await db.getBooks()
       dispatch({ type: 'SET_BOOKS', books })
@@ -552,23 +547,20 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     ttsRef.current?.speak(target.text, target.lang)
   }, [])
 
-  // Changes the book's language pair / spoken side and remembers it for this
-  // book. Stops any reading in progress, since the voice language may change.
-  const setLanguages = useCallback(async (langSrc: string, langTgt: string, ttsSide: 'src' | 'tgt') => {
+  // Chooses which of the book's two languages is read aloud (remembered per
+  // book). Stops any reading in progress, since the voice language changes.
+  const setTtsSide = useCallback(async (side: 'src' | 'tgt') => {
     ttsRef.current?.stop()
-    closeWordPopup()
-    dispatch({ type: 'LANGS', langSrc, langTgt, ttsSide })
+    dispatch({ type: 'TTS_SIDE', side })
     const id = stateRef.current.bookId
     if (!id) return
     try {
       const stored = await db.getBook(id)
-      if (!stored) return
-      await db.putBook({ ...stored, langSrc, langTgt, ttsSide, langsConfirmed: true })
-      dispatch({ type: 'SET_BOOKS', books: await db.getBooks() })
+      if (stored) await db.putBook({ ...stored, ttsSide: side })
     } catch {
       /* persisting is best-effort; the in-memory choice still applies */
     }
-  }, [closeWordPopup])
+  }, [])
 
   const stopSpeaking = useCallback(() => {
     ttsRef.current?.stop()
@@ -607,7 +599,7 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     markAsReadAndNext, markAsUnread, onUserScrolled, setCurrentPair,
     goToPrevChapter, goToNextChapter,
     toggleTheme, toggleColumns, toggleExpandMode, expandColumn, setFontSize,
-    toggleSpeak, startContinuousReading, stopSpeaking, translateWordAction, setLanguages, dismissError,
+    toggleSpeak, startContinuousReading, stopSpeaking, translateWordAction, setTtsSide, dismissError,
     wordPopup, showWordPopup, closeWordPopup
   }
 
