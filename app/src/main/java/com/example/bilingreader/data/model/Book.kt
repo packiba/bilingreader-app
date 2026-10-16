@@ -5,6 +5,21 @@ data class AlignedPair(
     val tgt: String
 )
 
+data class BookMeta(
+    val titleSrc: String?,
+    val titleTgt: String?,
+    val author: String?,
+    val langSrc: String?,
+    val langTgt: String?
+)
+
+data class BookCover(
+    val mime: String,
+    val width: Int?,
+    val height: Int?,
+    val dataBase64: String
+)
+
 /**
  * Leaf chapter consumed by the reader UI (flat list of pages).
  *
@@ -67,7 +82,9 @@ data class Book(
     /** Original tree structure (may be empty when the file used the legacy flat format). */
     val roots: List<BookNode> = emptyList(),
     /** Flattened leaf chapters used by the reader, sidebar, and progress tracking. */
-    val chapters: List<Chapter>
+    val chapters: List<Chapter>,
+    val meta: BookMeta? = null,
+    val cover: BookCover? = null
 ) {
     // Computed once and cached: totalPairs was being summed over every chapter on every
     // interaction (each swipe, each scroll settle, each slider release) even though the book's

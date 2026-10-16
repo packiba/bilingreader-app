@@ -4,9 +4,19 @@ import type { RenderRow } from '../types'
 import { useReaderRow } from '../store/ReaderProvider'
 import { IconSpeaker, IconStop } from './icons'
 import PairRowContent from './PairRowContent'
+import { wordAtPoint } from '../words'
 
 const SWIPE_THRESHOLD = 48
 const LONG_PRESS_MS = 600
+// A press held this long is the start of native text selection, not a tap.
+const TAP_MAX_MS = 450
+
+// True while the user has a text selection (long-press word selection and its
+// handles, or a mouse drag). Taps and swipes must stay out of the way then.
+function selectionActive(): boolean {
+  const sel = window.getSelection()
+  return !!sel && sel.rangeCount > 0 && !sel.isCollapsed
+}
 
 interface GestureState {
   sx: number
@@ -38,6 +48,8 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
 
   const onPointerDown = (e: React.PointerEvent) => {
     if (e.target instanceof Element && e.target.closest('.speakerbtn')) return
+    // A tap while a selection exists only dismisses it (native behaviour).
+    if (selectionActive()) { gesture.current = null; return }
     const target = e.target instanceof Element ? e.target : null
     gesture.current = { sx: e.clientX, sy: e.clientY, t0: performance.now(), active: false, moved: false, target }
   }
@@ -45,6 +57,10 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
   const onPointerMove = (e: React.PointerEvent) => {
     const g = gesture.current
     if (!g || e.target instanceof Element && (e.target as Element).closest('.speakerbtn')) return
+    // The user is selecting text (mouse/pen drag, or selection just started):
+    // a horizontal move must extend the selection, not mark the row as read
+    // and scroll the list away from under it.
+    if (selectionActive()) { gesture.current = null; setDx(0); return }
     const dxv = e.clientX - g.sx
     const dyv = e.clientY - g.sy
     if (!g.active && Math.hypot(dxv, dyv) > 14) {
@@ -69,14 +85,20 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
 
   const tryOpenWord = (clientX: number, clientY: number, target: Element | null) => {
     if (!target) return
+    if (selectionActive()) return
     const textEl = target.closest('.rowtext, .chapterhead')
     if (!textEl) return
-    const word = wordAtPoint(textEl, clientX, clientY)
+    // The tapped column knows its own language and the language of the other
+    // column: translate from the first into the second.
+    const colEl = target.closest('[data-lang]') as HTMLElement | null
+    const from = colEl?.dataset.lang
+    const to = colEl?.dataset.other
+    if (!from || !to || from === to) return
+    const word = wordAtPoint(textEl, clientX, clientY, from)
     if (!word) return
-    const isBulgarian = !!target.closest('.bglang')
     const x = Math.max(8, Math.min(clientX, window.innerWidth - 250))
     const y = Math.min(clientY + 12, window.innerHeight - 120)
-    reader.showWordPopup(index, word, isBulgarian, x, y)
+    reader.showWordPopup(index, word, from, to, x, y)
     lastTapHandledAt.current = performance.now()
   }
 
@@ -85,6 +107,8 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
     gesture.current = null
     setDx(0)
     if (!g || g.moved) return
+    // Held long enough to be a selection gesture rather than a tap.
+    if (performance.now() - g.t0 >= TAP_MAX_MS) return
     const target = e.target instanceof Element ? e.target : null
     if (!target) return
     if (e.pointerType !== 'touch' && e.pointerType !== 'pen') return
@@ -197,6 +221,7 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
             {popup.result === 'loading' && <div className="body">…</div>}
             {popup.result === 'done' && <div className="body">{popup.text}</div>}
             {popup.result === 'err' && <div className="err">Не удалось перевести</div>}
+            <div className="langs">{popup.from.toUpperCase()} → {popup.to.toUpperCase()}</div>
           </div>
         </div>,
         document.body
@@ -206,30 +231,3 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
 }
 
 export default memo(PairRow)
-
-function wordAtPoint(container: Element, x: number, y: number): string | null {
-  const caret = document.caretRangeFromPoint
-  const range = caret ? caret.call(document, x, y) : null
-  const node = range ? range.startContainer : null
-  if (node && node.nodeType === Node.TEXT_NODE && node.parentElement && container.contains(node)) {
-    const text = node.textContent ?? ''
-    let off = range ? range.startOffset : 0
-    off = Math.min(off, text.length)
-    let left = off
-    let right = off
-    const isLetter = (c: string) => /[A-Za-zА-Яа-яЁё]/.test(c)
-    while (left > 0 && isLetter(text[left - 1])) left--
-    while (right < text.length && isLetter(text[right])) right++
-    const word = text.slice(left, right).trim()
-    return word.length > 0 ? word : null
-  }
-  // Fallback: pick the deepest element at point and pull a word from its text
-  const el = document.elementFromPoint(x, y)
-  const textEl = el?.closest('.rowtext, .chapterhead')
-  if (textEl) {
-    const text = textEl.textContent ?? ''
-    const m = text.match(/[A-Za-zА-Яа-яЁё]+/u)
-    return m ? m[0] : null
-  }
-  return null
-}

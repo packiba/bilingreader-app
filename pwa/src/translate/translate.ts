@@ -1,8 +1,8 @@
-const cache = new Map<string, string>()
+import { mtCode } from '../languages'
 
-function langpair(isBulgarian: boolean): string {
-  return isBulgarian ? 'bg|ru' : 'ru|bg'
-}
+type Provider = 'google' | 'mymemory' | 'libre'
+
+const cache = new Map<string, string>()
 
 // Google's public "gtx" client endpoint. Undocumented, but it's a plain GET
 // with no custom headers, so it never triggers a CORS preflight, and Google
@@ -11,11 +11,11 @@ function langpair(isBulgarian: boolean): string {
 // (LibreTranslate) now gate most traffic behind an API key. This is the
 // primary source; the other two stay on as fallbacks in case this endpoint
 // is ever rate-limited or unreachable on a given network.
-async function googleGtx(word: string, pair: string, signal: AbortSignal): Promise<string> {
-  const [source, target] = pair.split('|')
+async function googleGtx(word: string, from: string, to: string, signal: AbortSignal): Promise<string> {
   const url =
     'https://translate.googleapis.com/translate_a/single?client=gtx&sl=' +
-    source + '&tl=' + target + '&dt=t&q=' + encodeURIComponent(word)
+    encodeURIComponent(mtCode(from, 'google')) + '&tl=' + encodeURIComponent(mtCode(to, 'google')) +
+    '&dt=t&q=' + encodeURIComponent(word)
   const res = await fetch(url, { signal })
   if (!res.ok) throw new Error(`Google ${res.status}`)
   const data = (await res.json()) as unknown
@@ -26,12 +26,9 @@ async function googleGtx(word: string, pair: string, signal: AbortSignal): Promi
   return text
 }
 
-async function myMemory(word: string, pair: string, signal: AbortSignal): Promise<string> {
-  const url =
-    'https://api.mymemory.translated.net/get?q=' +
-    encodeURIComponent(word) +
-    '&langpair=' +
-    encodeURIComponent(pair)
+async function myMemory(word: string, from: string, to: string, signal: AbortSignal): Promise<string> {
+  const pair = `${mtCode(from, 'mymemory')}|${mtCode(to, 'mymemory')}`
+  const url = 'https://api.mymemory.translated.net/get?q=' + encodeURIComponent(word) + '&langpair=' + encodeURIComponent(pair)
   const res = await fetch(url, { signal })
   if (!res.ok) throw new Error(`MyMemory ${res.status}`)
   const data = (await res.json()) as {
@@ -44,13 +41,12 @@ async function myMemory(word: string, pair: string, signal: AbortSignal): Promis
   return text
 }
 
-async function libreTranslate(word: string, pair: string, signal: AbortSignal): Promise<string> {
-  const [source, target] = pair.split('|')
+async function libreTranslate(word: string, from: string, to: string, signal: AbortSignal): Promise<string> {
   const res = await fetch('https://libretranslate.com/translate', {
     method: 'POST',
     signal,
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ q: word, source, target, format: 'text' })
+    body: JSON.stringify({ q: word, source: mtCode(from, 'libre'), target: mtCode(to, 'libre'), format: 'text' })
   })
   if (!res.ok) throw new Error(`LibreTranslate ${res.status}`)
   const data = (await res.json()) as { translatedText?: string }
@@ -59,29 +55,33 @@ async function libreTranslate(word: string, pair: string, signal: AbortSignal): 
   return text
 }
 
-export async function translateWord(word: string, isBulgarian: boolean): Promise<string> {
-  const pair = langpair(isBulgarian)
-  const key = `${pair}|${word}`
+const PROVIDERS: Array<[Provider, (w: string, f: string, t: string, s: AbortSignal) => Promise<string>]> = [
+  ['google', googleGtx],
+  ['mymemory', myMemory],
+  ['libre', libreTranslate]
+]
+
+// Translates `word` from language `from` into language `to` (ISO 639-1 codes).
+export async function translateWord(word: string, from: string, to: string): Promise<string> {
+  if (from === to) throw new Error('same language')
+  const key = `${from}|${to}|${word}`
   const hit = cache.get(key)
   if (hit) return hit
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), 8000)
   try {
-    try {
-      const t = await googleGtx(word, pair, controller.signal)
-      cache.set(key, t)
-      return t
-    } catch {
+    let lastError: unknown = new Error('no provider')
+    for (const [, run] of PROVIDERS) {
       try {
-        const t = await myMemory(word, pair, controller.signal)
+        const t = await run(word, from, to, controller.signal)
         cache.set(key, t)
         return t
-      } catch {
-        const t = await libreTranslate(word, pair, controller.signal)
-        cache.set(key, t)
-        return t
+      } catch (e) {
+        lastError = e
+        if (controller.signal.aborted) break
       }
     }
+    throw lastError
   } finally {
     window.clearTimeout(timeout)
   }

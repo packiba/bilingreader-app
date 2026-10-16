@@ -71,6 +71,7 @@ export default function LibraryScreen() {
               <button className="btn delete" onClick={(e) => { e.stopPropagation(); void deleteBook(b.id) }}>Удалить</button>
               <div className="title">{b.title || b.name}</div>
               {b.author && <div className="meta">{b.author}</div>}
+              {b.langSrc && b.langTgt && <div className="meta">{b.langSrc.toUpperCase()} → {b.langTgt.toUpperCase()}</div>}
             </div>
           ))}
         </div>

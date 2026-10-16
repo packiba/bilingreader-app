@@ -6,15 +6,19 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.bilingreader.data.model.StoredBook
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
+import org.json.JSONObject
 
 private val Context.store by preferencesDataStore(name = "reader_prefs")
 
 class ReaderPreferences(private val context: Context) {
 
     private val lastFileUriKey = stringPreferencesKey("last_file_uri")
+    private val importedBooksKey = stringPreferencesKey("imported_books")
 
     data class Settings(
         val lastReadPair: Int = 0,
@@ -97,6 +101,51 @@ class ReaderPreferences(private val context: Context) {
 
     suspend fun saveLastFileUri(uri: String) {
         context.store.edit { it[lastFileUriKey] = uri }
+    }
+
+    fun observeBookList(): Flow<List<StoredBook>> = context.store.data.map { prefs ->
+        val json = prefs[importedBooksKey] ?: "[]"
+        parseBookList(json)
+    }
+
+    suspend fun saveBookList(books: List<StoredBook>) {
+        context.store.edit {
+            it[importedBooksKey] = encodeBookList(books)
+        }
+    }
+
+    private fun parseBookList(json: String): List<StoredBook> {
+        val arr = JSONArray(json)
+        return List(arr.length()) { i ->
+            val o = arr.getJSONObject(i)
+            StoredBook(
+                id = o.getString("id"),
+                uri = o.getString("uri"),
+                name = o.getString("name"),
+                title = o.optString("title").takeIf { it.isNotEmpty() },
+                author = o.optString("author").takeIf { it.isNotEmpty() },
+                coverThumbnailBase64 = o.optString("cover").takeIf { it.isNotEmpty() },
+                totalPairs = o.getInt("totalPairs"),
+                importedAt = o.getLong("importedAt")
+            )
+        }
+    }
+
+    private fun encodeBookList(books: List<StoredBook>): String {
+        val arr = JSONArray()
+        for (b in books) {
+            val o = JSONObject()
+            o.put("id", b.id)
+            o.put("uri", b.uri)
+            o.put("name", b.name)
+            o.put("title", b.title ?: "")
+            o.put("author", b.author ?: "")
+            o.put("cover", b.coverThumbnailBase64 ?: "")
+            o.put("totalPairs", b.totalPairs)
+            o.put("importedAt", b.importedAt)
+            arr.put(o)
+        }
+        return arr.toString()
     }
 
     suspend fun getLastFileUri(): String? {

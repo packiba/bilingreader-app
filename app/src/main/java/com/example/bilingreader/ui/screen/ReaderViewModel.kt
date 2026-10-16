@@ -141,11 +141,12 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 val settings = prefs.observe(hash).first()
                 val total = book.totalPairs
                 val rawName = uri.lastPathSegment ?: uri.toString()
-                val fileName = rawName.substringAfterLast(":").substringAfterLast("/").substringBeforeLast(".")
+                val fileNameFromUri = rawName.substringAfterLast(":").substringAfterLast("/").substringBeforeLast(".")
+                val displayName = book.meta?.titleTgt ?: book.meta?.titleSrc ?: fileNameFromUri
                 _state.update {
                     it.copy(
                         book = book,
-                        fileName = fileName,
+                        fileName = displayName,
                         fontSizeSp = settings.fontSize,
                         isDarkTheme = settings.darkTheme,
                         columnsSwapped = settings.columnsSwapped,
@@ -181,9 +182,13 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun markAsUnread(pairIndex: Int) {
-        val current = _state.value
-        if (!current.isRead(pairIndex)) return
-        _state.update { it.copy(readExceptions = it.readExceptions + pairIndex) }
+        if (pairIndex > _state.value.readThrough) return
+        _state.update {
+            it.copy(
+                readThrough = pairIndex - 1,
+                readExceptions = it.readExceptions.filterTo(mutableSetOf()) { idx -> idx < pairIndex }
+            )
+        }
         schedulePersistProgress()
     }
 

@@ -8,6 +8,8 @@ import type { ExpandMode } from './settings'
 import { createTts } from '../tts/tts'
 import type { TtsController } from '../tts/tts'
 import { translateWord } from '../translate/translate'
+import { langName } from '../languages'
+import { DEFAULT_LANG_SRC, DEFAULT_LANG_TGT } from '../parser/bookParser'
 
 export interface ReaderState {
   books: StoredBook[]
@@ -27,6 +29,12 @@ export interface ReaderState {
   isImporting: boolean
   error: string | null
   screen: 'reader' | 'library'
+  // Language pair of the open book, and which side is read aloud.
+  langSrc: string
+  langTgt: string
+  ttsSide: 'src' | 'tgt'
+  // The book didn't declare its languages and the user hasn't confirmed them yet.
+  needsLangSetup: boolean
   scrollRequest: { index: number; token: number; isSlow: boolean } | null
 }
 
@@ -55,6 +63,10 @@ const initialState: ReaderState = {
   isImporting: false,
   error: null,
   screen: 'library',
+  langSrc: DEFAULT_LANG_SRC,
+  langTgt: DEFAULT_LANG_TGT,
+  ttsSide: 'tgt',
+  needsLangSetup: false,
   scrollRequest: null
 }
 
@@ -64,7 +76,8 @@ type Action =
   | { type: 'SET_IMPORTING'; v: boolean }
   | { type: 'SET_ERROR'; message: string | null }
   | { type: 'SCREEN'; screen: 'reader' | 'library' }
-  | { type: 'OPENED'; book: Book; bookId: string; fileName: string; progress: db.BookProgress }
+  | { type: 'OPENED'; book: Book; bookId: string; fileName: string; progress: db.BookProgress; langSrc: string; langTgt: string; ttsSide: 'src' | 'tgt'; needsLangSetup: boolean }
+  | { type: 'LANGS'; langSrc: string; langTgt: string; ttsSide: 'src' | 'tgt' }
   | { type: 'CLOSED' }
   | { type: 'SCROLL'; index: number; isSlow: boolean }
   | { type: 'USER_SCROLLED'; index: number }
@@ -92,6 +105,10 @@ function reducer(s: ReaderState, a: Action): ReaderState {
         bookId: a.bookId,
         fileName: a.fileName,
         screen: 'reader',
+        langSrc: a.langSrc,
+        langTgt: a.langTgt,
+        ttsSide: a.ttsSide,
+        needsLangSetup: a.needsLangSetup,
         currentPair: restore,
         readThrough: a.progress.readThrough,
         readExceptions: a.progress.readExceptions,
@@ -143,6 +160,7 @@ function reducer(s: ReaderState, a: Action): ReaderState {
     case 'COLUMNS': return { ...s, columnsSwapped: a.swapped }
     case 'EXPAND': return { ...s, expandMode: a.mode }
     case 'SPEAK': return { ...s, speakingPair: a.index, isContinuousReading: a.continuous }
+    case 'LANGS': return { ...s, langSrc: a.langSrc, langTgt: a.langTgt, ttsSide: a.ttsSide, needsLangSetup: false, speakingPair: null, isContinuousReading: false }
   }
 }
 
@@ -155,6 +173,8 @@ export interface WordPopupState {
   x: number
   y: number
   word: string
+  from: string
+  to: string
   result: 'loading' | 'done' | 'err'
   text?: string
 }
@@ -175,7 +195,7 @@ export interface RowContextValue {
   toggleSpeak: (index: number) => void
   startContinuousReading: (index: number) => void
   wordPopup: WordPopupState | null
-  showWordPopup: (index: number, word: string, isBulgarian: boolean, x: number, y: number) => void
+  showWordPopup: (index: number, word: string, from: string, to: string, x: number, y: number) => void
   closeWordPopup: () => void
 }
 
@@ -212,10 +232,11 @@ interface ReaderContextValue {
   toggleSpeak: (index: number) => void
   startContinuousReading: (index: number) => void
   stopSpeaking: () => void
-  translateWordAction: (word: string, isBulgarian: boolean) => Promise<string>
+  translateWordAction: (word: string, from: string, to: string) => Promise<string>
+  setLanguages: (langSrc: string, langTgt: string, ttsSide: 'src' | 'tgt') => Promise<void>
   dismissError: () => void
   wordPopup: WordPopupState | null
-  showWordPopup: (index: number, word: string, isBulgarian: boolean, x: number, y: number) => void
+  showWordPopup: (index: number, word: string, from: string, to: string, x: number, y: number) => void
   closeWordPopup: () => void
 }
 
@@ -246,10 +267,10 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     setWordPopup(null)
   }, [])
 
-  const showWordPopup = useCallback((index: number, word: string, isBulgarian: boolean, x: number, y: number) => {
+  const showWordPopup = useCallback((index: number, word: string, from: string, to: string, x: number, y: number) => {
     const token = ++popupToken.current
-    setWordPopup({ index, x, y, word, result: 'loading' })
-    translateWord(word, isBulgarian).then(
+    setWordPopup({ index, x, y, word, from, to, result: 'loading' })
+    translateWord(word, from, to).then(
       (t) => { if (popupToken.current === token) setWordPopup((p) => (p ? { ...p, result: 'done', text: t } : p)) },
       () => { if (popupToken.current === token) setWordPopup((p) => (p ? { ...p, result: 'err' } : p)) }
     )
@@ -272,17 +293,27 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     }, 500)
   }, [flush])
 
+  // The text and language that get read aloud for a pair: the book's `tgt`
+  // or `src` side, whichever the user chose — independent of column order.
+  const speakTarget = (s: ReaderState, index: number): { text: string; lang: string } | null => {
+    const p = s.book?.pairs[index]
+    if (!p) return null
+    return s.ttsSide === 'tgt' ? { text: p.tgt, lang: s.langTgt } : { text: p.src, lang: s.langSrc }
+  }
+
   const advanceContinuous = useCallback((from: number) => {
     const s = stateRef.current
-    const nextIdx = from + 1
-    const nextText = s.book?.bulgarianPairs[nextIdx]
-    if (nextText == null) {
+    // Skip pairs that have nothing to say on the spoken side.
+    let nextIdx = from + 1
+    let target = speakTarget(s, nextIdx)
+    while (target && target.text.trim() === '') target = speakTarget(s, ++nextIdx)
+    if (!target) {
       dispatch({ type: 'SPEAK', index: null, continuous: false })
       return
     }
     dispatch({ type: 'SPEAK', index: nextIdx, continuous: true })
     dispatch({ type: 'SCROLL', index: nextIdx, isSlow: true })
-    ttsRef.current?.speak(nextText)
+    ttsRef.current?.speak(target.text, target.lang)
   }, [])
 
   if (!ttsRef.current) {
@@ -296,9 +327,9 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
       }
     }
     tts.onError = () => dispatch({ type: 'SPEAK', index: null, continuous: false })
-    tts.onMissingVoice = () => {
+    tts.onMissingVoice = (lang) => {
       dispatch({ type: 'SPEAK', index: null, continuous: false })
-      dispatch({ type: 'SET_ERROR', message: 'Болгарский голос для чтения вслух не найден на этом устройстве' })
+      dispatch({ type: 'SET_ERROR', message: `Голос для языка «${langName(lang)}» не найден на этом устройстве` })
     }
     ttsRef.current = tts
   }
@@ -332,7 +363,17 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
       const book = parseBook(stored.rawJson)
       const progress = (await db.getProgress(id)) ?? { lastPair: 0, readThrough: -1, readExceptions: [] }
       await db.setMeta('lastBookId', id).catch(() => {})
-      dispatch({ type: 'OPENED', book, bookId: id, fileName: stored.name, progress })
+      dispatch({
+        type: 'OPENED',
+        book,
+        bookId: id,
+        fileName: stored.name,
+        progress,
+        langSrc: stored.langSrc ?? book.langSrc,
+        langTgt: stored.langTgt ?? book.langTgt,
+        ttsSide: stored.ttsSide ?? 'tgt',
+        needsLangSetup: !book.langsFromFile && !stored.langsConfirmed
+      })
     } catch (e) {
       dispatch({ type: 'SET_LOADING', v: false })
       dispatch({ type: 'SET_ERROR', message: e instanceof Error ? e.message : 'Не удалось открыть книгу' })
@@ -357,7 +398,11 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
         totalPairs: book.totalPairs,
         title,
         author,
-        coverDataUrl
+        coverDataUrl,
+        langSrc: book.langSrc,
+        langTgt: book.langTgt,
+        ttsSide: 'tgt',
+        langsConfirmed: book.langsFromFile
       })
       const books = await db.getBooks()
       dispatch({ type: 'SET_BOOKS', books })
@@ -397,8 +442,8 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
   )
 
   const rows = useMemo(
-    () => (state.book ? buildRenderRows(state.book, state.columnsSwapped) : []),
-    [state.book, state.columnsSwapped]
+    () => (state.book ? buildRenderRows(state.book, state.columnsSwapped, state.langSrc, state.langTgt) : []),
+    [state.book, state.columnsSwapped, state.langSrc, state.langTgt]
   )
 
   const markAsReadAndNext = useCallback((index: number) => {
@@ -493,26 +538,44 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
       dispatch({ type: 'SPEAK', index: null, continuous: false })
       return
     }
-    const text = s.book?.bulgarianPairs[index]
-    if (text == null) return
+    const target = speakTarget(s, index)
+    if (!target || target.text.trim() === '') return
     dispatch({ type: 'SPEAK', index, continuous: false })
-    ttsRef.current?.speak(text)
+    ttsRef.current?.speak(target.text, target.lang)
   }, [])
 
   const startContinuousReading = useCallback((index: number) => {
     const s = stateRef.current
-    const text = s.book?.bulgarianPairs[index]
-    if (text == null) return
+    const target = speakTarget(s, index)
+    if (!target || target.text.trim() === '') return
     dispatch({ type: 'SPEAK', index, continuous: true })
-    ttsRef.current?.speak(text)
+    ttsRef.current?.speak(target.text, target.lang)
   }, [])
+
+  // Changes the book's language pair / spoken side and remembers it for this
+  // book. Stops any reading in progress, since the voice language may change.
+  const setLanguages = useCallback(async (langSrc: string, langTgt: string, ttsSide: 'src' | 'tgt') => {
+    ttsRef.current?.stop()
+    closeWordPopup()
+    dispatch({ type: 'LANGS', langSrc, langTgt, ttsSide })
+    const id = stateRef.current.bookId
+    if (!id) return
+    try {
+      const stored = await db.getBook(id)
+      if (!stored) return
+      await db.putBook({ ...stored, langSrc, langTgt, ttsSide, langsConfirmed: true })
+      dispatch({ type: 'SET_BOOKS', books: await db.getBooks() })
+    } catch {
+      /* persisting is best-effort; the in-memory choice still applies */
+    }
+  }, [closeWordPopup])
 
   const stopSpeaking = useCallback(() => {
     ttsRef.current?.stop()
     dispatch({ type: 'SPEAK', index: null, continuous: false })
   }, [])
 
-  const translateWordAction = useCallback((word: string, isBulgarian: boolean) => translateWord(word, isBulgarian), [])
+  const translateWordAction = useCallback((word: string, from: string, to: string) => translateWord(word, from, to), [])
 
   const dismissError = useCallback(() => dispatch({ type: 'SET_ERROR', message: null }), [])
 
@@ -544,7 +607,7 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     markAsReadAndNext, markAsUnread, onUserScrolled, setCurrentPair,
     goToPrevChapter, goToNextChapter,
     toggleTheme, toggleColumns, toggleExpandMode, expandColumn, setFontSize,
-    toggleSpeak, startContinuousReading, stopSpeaking, translateWordAction, dismissError,
+    toggleSpeak, startContinuousReading, stopSpeaking, translateWordAction, setLanguages, dismissError,
     wordPopup, showWordPopup, closeWordPopup
   }
 

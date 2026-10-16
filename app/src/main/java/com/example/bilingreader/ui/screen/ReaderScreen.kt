@@ -24,8 +24,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -69,7 +69,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun ReaderScreen(
     viewModel: ReaderViewModel,
-    onFilePick: () -> Unit
+    onLibraryClick: () -> Unit
 ) {
     val state by viewModel.state.collectAsState()
     var showSidebar by remember { mutableStateOf(false) }
@@ -112,10 +112,10 @@ fun ReaderScreen(
                         .padding(horizontal = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onFilePick, modifier = Modifier.height(32.dp)) {
+                    IconButton(onClick = onLibraryClick, modifier = Modifier.height(32.dp)) {
                         Icon(
-                            Icons.Default.FileOpen,
-                            "Open file",
+                            Icons.Default.CollectionsBookmark,
+                            "Библиотека",
                             modifier = Modifier.height(18.dp),
                             tint = contentColor
                         )
@@ -295,6 +295,7 @@ fun ReaderScreen(
                     PageSlider(
                         currentPage = state.currentPairIndex,
                         totalPages = totalPairs,
+                        readProgress = state.readThrough,
                         enabled = showToolbar,
                         chapterStarts = state.chapterStarts,
                         onPageChange = { viewModel.setCurrentPairIndex(it) }

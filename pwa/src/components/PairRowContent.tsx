@@ -24,17 +24,16 @@ export default function PairRowContent({
   speaker?: React.ReactNode
 }) {
   const row = rows[index]
-  const srcIsBg = row.isSrcBulgarian
   const activeColor = dark ? '#D1D5DB' : '#1F2937'
   const dimmedColor = dark ? '#888888' : '#999999'
   const textColor = read ? dimmedColor : activeColor
   const srcCol = (
-    <div className={`col left ${srcIsBg ? 'bglang' : 'russian'}`}>
+    <div className="col left" lang={row.langLeft} data-lang={row.langLeft} data-other={row.langRight}>
       <div className="textbook rowtext" style={{ fontSize, color: textColor }}>{row.srcText}</div>
     </div>
   )
   const tgtCol = (
-    <div className={`col right ${srcIsBg ? 'russian' : 'bglang'}`}>
+    <div className="col right" lang={row.langRight} data-lang={row.langRight} data-other={row.langLeft}>
       <div className="textbook rowtext" style={{ fontSize, color: textColor }}>{row.tgtText}</div>
     </div>
   )
@@ -51,7 +50,7 @@ export default function PairRowContent({
   return (
     <>
       {row.showHeader && (
-        <ChapterHeader titleSrc={row.headerTitleSrc} titleTgt={row.headerTitleTgt} srcIsBg={srcIsBg} fontSize={fontSize} dark={dark} />
+        <ChapterHeader titleSrc={row.headerTitleSrc} titleTgt={row.headerTitleTgt} langLeft={row.langLeft} langRight={row.langRight} fontSize={fontSize} dark={dark} />
       )}
       <div style={{ position: 'relative' }}>
         <div style={{ transform: `translateX(${dx}px)` }}>{cellContent}</div>

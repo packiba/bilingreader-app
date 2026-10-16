@@ -58,3 +58,6 @@ export const IconSpeaker = ({ size = 18, color = 'currentColor' }: IconProps) =>
 export const IconStop = ({ size = 18, color = 'currentColor' }: IconProps) => (
   <svg width={size} height={size} viewBox="0 0 24 24"><rect width="14" height="14" x="5" y="5" rx="2" fill={color} /></svg>
 )
+export const IconLang = ({ size = 18, color = 'currentColor' }: IconProps) => base(size, color, (
+  <><circle cx="12" cy="12" r="9" /><path d="M3 12h18" /><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18z" /></>
+))

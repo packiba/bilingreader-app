@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 fun PageSlider(
     currentPage: Int,
     totalPages: Int,
+    readProgress: Int,
     enabled: Boolean = true,
     chapterStarts: List<Int> = emptyList(),
     onPageChange: (Int) -> Unit
@@ -85,14 +86,30 @@ fun PageSlider(
                 }
             },
             track = { sliderState ->
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    SliderDefaults.Track(
-                        sliderState = sliderState,
-                        modifier = Modifier.fillMaxWidth().height(2.dp),
-                        thumbTrackGapSize = 0.dp,
-                        trackInsideCornerSize = 1.dp,
-                        drawStopIndicator = null
-                    )
+                val readFraction = remember(readProgress, totalPages) {
+                    val range = (totalPages - 1).coerceAtLeast(0).toFloat()
+                    if (range > 0f) (readProgress.toFloat() / range).coerceIn(0f, 1f) else 0f
+                }
+                val activeColor = MaterialTheme.colorScheme.primary
+                val inactiveColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Canvas(modifier = Modifier.fillMaxWidth().height(1.dp)) {
+                        val width = size.width
+                        val y = size.height / 2
+                        drawLine(
+                            color = inactiveColor,
+                            start = Offset(0f, y),
+                            end = Offset(width, y),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                        drawLine(
+                            color = activeColor,
+                            start = Offset(0f, y),
+                            end = Offset(width * readFraction, y),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                    }
                     // Chapter-start tick marks, drawn over the track at the fractional position
                     // each chapter's first pair sits at within the full page range.
                     if (chapterStarts.isNotEmpty() && totalPages > 1) {
@@ -111,7 +128,7 @@ fun PageSlider(
                                     color = tickColor,
                                     start = Offset(x, 0f),
                                     end = Offset(x, size.height),
-                                    strokeWidth = 1.5.dp.toPx()
+                                    strokeWidth = 1.dp.toPx()
                                 )
                             }
                         }
