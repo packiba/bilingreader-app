@@ -1,11 +1,28 @@
-import { forwardRef, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { VariableSizeList as List } from 'react-window'
-import type { ListOnItemsRenderedProps } from 'react-window'
+import { forwardRef, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { VariableSizeList as List, areEqual } from 'react-window'
+import type { ListChildComponentProps, ListOnItemsRenderedProps } from 'react-window'
+import type { RenderRow } from '../types'
 import { useReader } from '../store/ReaderProvider'
 import PairRow from './PairRow'
 import MeasurePass from './MeasurePass'
 
 const ESTIMATED_ROW = 120
+
+// react-window uses the `children` prop as the row COMPONENT TYPE. It must be
+// a stable, module-level component: an inline arrow function in render has a
+// new identity on every ReaderList render, so React treated it as a different
+// component type each time and unmounted + remounted every visible row —
+// destroying the DOM text nodes under the user's text selection (and doing
+// ~30 rows of full re-creation on every scroll tick / popup update).
+interface RowData { rows: RenderRow[] }
+
+const Row = memo(function Row({ index, style, data }: ListChildComponentProps<RowData>) {
+  return (
+    <div style={style}>
+      <PairRow rows={data.rows} index={index} />
+    </div>
+  )
+}, areEqual)
 
 const ScrollOuter = forwardRef<HTMLDivElement, Record<string, unknown>>((props, ref) => {
   const { children, style, onScroll, onWheel, ...rest } = props as {
@@ -116,6 +133,8 @@ export default function ReaderList() {
     pendingScroll.current = null
   }, [size.width, size.height, rows.length])
 
+  const itemData = useMemo<RowData>(() => ({ rows }), [rows])
+
   const scrollRafRef = useRef<number | null>(null)
   const pendingIndexRef = useRef<number | null>(null)
 
@@ -159,14 +178,11 @@ export default function ReaderList() {
           itemSize={itemSize}
           estimatedItemSize={ESTIMATED_ROW}
           overscanCount={12}
+          itemData={itemData}
           outerElementType={ScrollOuter}
           onItemsRendered={onItemsRendered}
         >
-          {({ index, style }) => (
-            <div style={style}>
-              <PairRow rows={rows} index={index} />
-            </div>
-          )}
+          {Row}
         </List>
       )}
     </div>

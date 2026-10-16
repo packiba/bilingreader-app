@@ -1,5 +1,12 @@
 import type { AlignedPair, Book, BookCover, BookMeta, BookNode, Chapter, RenderRow } from '../types'
 import { displayTitleSrc, displayTitleTgt } from '../types'
+import { normalizeLang } from '../languages'
+
+// Used for books that don't declare their languages (legacy JSON arrays and
+// BLB files without `book.lang_src` / `book.lang_tgt`) — this is what the app
+// assumed before languages became configurable.
+export const DEFAULT_LANG_SRC = 'ru'
+export const DEFAULT_LANG_TGT = 'bg'
 
 function optString(obj: Record<string, unknown>, key: string): string | null {
   const v = obj[key]
@@ -113,8 +120,8 @@ function parseBookMeta(obj: unknown): BookMeta | null {
     titleSrc: optString(b, 'title_src'),
     titleTgt: optString(b, 'title_tgt'),
     author: optString(b, 'author'),
-    langSrc: optString(b, 'lang_src'),
-    langTgt: optString(b, 'lang_tgt')
+    langSrc: optString(b, 'lang_src') ?? optString(b, 'src_lang'),
+    langTgt: optString(b, 'lang_tgt') ?? optString(b, 'tgt_lang')
   }
 }
 
@@ -134,7 +141,19 @@ function parseBlb(root: Record<string, unknown>): Book {
   const chapters = objArray(root['chapters'])
   if (chapters.length === 0) throw new Error('Файл не содержит глав')
   const book = finalizeBook({ roots: [], chapters: chaptersFromFlat(chapters) })
-  return { ...book, meta: parseBookMeta(root['book']), cover: parseCover(root['cover']) }
+  const meta = parseBookMeta(root['book'])
+  // Languages normally live in `book.lang_src` / `book.lang_tgt`; top-level
+  // keys of the same name are accepted too.
+  const langSrc = normalizeLang(meta?.langSrc ?? optString(root, 'lang_src'))
+  const langTgt = normalizeLang(meta?.langTgt ?? optString(root, 'lang_tgt'))
+  return {
+    ...book,
+    meta,
+    cover: parseCover(root['cover']),
+    langSrc: langSrc ?? DEFAULT_LANG_SRC,
+    langTgt: langTgt ?? DEFAULT_LANG_TGT,
+    langsFromFile: langSrc != null && langTgt != null
+  }
 }
 
 function finalizeBook(partial: { roots: BookNode[]; chapters: Chapter[] }): Book {
@@ -143,9 +162,12 @@ function finalizeBook(partial: { roots: BookNode[]; chapters: Chapter[] }): Book
     roots: partial.roots,
     chapters: partial.chapters,
     totalPairs,
-    bulgarianPairs: partial.chapters.flatMap((c) => c.pairs.map((p) => p.tgt)),
+    pairs: partial.chapters.flatMap((c) => c.pairs),
     meta: null,
-    cover: null
+    cover: null,
+    langSrc: DEFAULT_LANG_SRC,
+    langTgt: DEFAULT_LANG_TGT,
+    langsFromFile: false
   }
 }
 
@@ -180,7 +202,7 @@ export function computeChapterStarts(book: Book, swapped: boolean): number[] {
   return starts
 }
 
-export function buildRenderRows(book: Book, columnsSwapped: boolean): RenderRow[] {
+export function buildRenderRows(book: Book, columnsSwapped: boolean, langSrc: string, langTgt: string): RenderRow[] {
   const rows: RenderRow[] = []
   let globalIdx = 0
   let lastHeaderTitle: string | null = null
@@ -199,8 +221,8 @@ export function buildRenderRows(book: Book, columnsSwapped: boolean): RenderRow[
         headerTitleTgt: headerTgt,
         srcText: columnsSwapped ? p.tgt : p.src,
         tgtText: columnsSwapped ? p.src : p.tgt,
-        bulgarianText: p.tgt,
-        isSrcBulgarian: columnsSwapped
+        langLeft: columnsSwapped ? langTgt : langSrc,
+        langRight: columnsSwapped ? langSrc : langTgt
       })
       globalIdx++
     }

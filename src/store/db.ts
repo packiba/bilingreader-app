@@ -39,6 +39,13 @@ export interface StoredBook {
   title?: string
   author?: string
   coverDataUrl?: string
+  // Language pair (canonical codes). Starts as what the book file declares and
+  // can be changed by the user; `langsConfirmed` is true once the file declared
+  // both languages or the user has confirmed them.
+  langSrc?: string
+  langTgt?: string
+  ttsSide?: 'src' | 'tgt'
+  langsConfirmed?: boolean
 }
 
 export interface BookProgress {

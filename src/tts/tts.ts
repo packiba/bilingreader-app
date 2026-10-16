@@ -1,4 +1,5 @@
-const BG_PREFIXES = ['bg', 'bg-', 'bg_', 'bulgarian']
+import { ttsTag } from '../languages'
+
 // If neither onstart nor onend/onerror fires within this window, the
 // browser silently dropped the utterance (a known WebKit/Chrome quirk) —
 // treat it as an error instead of hanging continuous reading forever.
@@ -6,46 +7,35 @@ const START_WATCHDOG_MS = 3000
 // How long to wait for the voice list to finish loading before giving up.
 // getVoices() is frequently empty on the very first call right after page
 // load (voices load asynchronously), which used to surface the "voice not
-// found" message even though a Bulgarian voice was available a moment
-// later.
+// found" message even though a matching voice was available a moment later.
 const VOICE_WAIT_MS = 4000
 
-function isBg(lang: string): boolean {
-  const l = lang.toLowerCase()
-  return BG_PREFIXES.some((p) => l.startsWith(p)) || l.includes('bulgaria')
-}
+// Browsers disagree on the separator (iOS "bg-BG", Android "bg_BG").
+const norm = (l: string) => l.toLowerCase().replace(/_/g, '-')
+const primary = (l: string) => norm(l).split('-')[0]
 
-export function findBgVoice(): SpeechSynthesisVoice | undefined {
+// Finds the best installed voice for a language code ("bg", "en", "ru"…):
+// same primary language, preferring the exact region of our default tag,
+// then the system default voice, then an on-device voice over a network one.
+export function findVoice(lang: string): SpeechSynthesisVoice | undefined {
   const synth = window.speechSynthesis
   if (!synth) return undefined
-  return synth.getVoices().find((v) => isBg(v.lang) || isBg(v.name))
-}
-
-export function hasBulgarianVoice(): Promise<boolean> {
-  return new Promise((resolve) => {
-    const synth = window.speechSynthesis
-    if (!synth) return resolve(false)
-    if (findBgVoice()) return resolve(true)
-    let done = false
-    const finish = (v: boolean) => {
-      if (!done) { done = true; resolve(v) }
-    }
-    const onChange = () => finish(Boolean(findBgVoice()))
-    synth.addEventListener('voiceschanged', onChange)
-    window.setTimeout(() => {
-      synth.removeEventListener('voiceschanged', onChange)
-      finish(Boolean(findBgVoice()))
-    }, 3000)
-  })
+  const wantTag = norm(ttsTag(lang))
+  const wantPrimary = primary(lang)
+  const candidates = synth.getVoices().filter((v) => primary(v.lang) === wantPrimary)
+  if (candidates.length === 0) return undefined
+  const score = (v: SpeechSynthesisVoice) =>
+    (norm(v.lang) === wantTag ? 4 : 0) + (v.default ? 2 : 0) + (v.localService ? 1 : 0)
+  return candidates.reduce((best, v) => (score(v) > score(best) ? v : best))
 }
 
 export interface TtsController {
-  speak(text: string): void
+  speak(text: string, lang: string): void
   stop(): void
   isSpeaking(): boolean
   onDone: () => void
   onError: () => void
-  onMissingVoice: () => void
+  onMissingVoice: (lang: string) => void
 }
 
 export function createTts(): TtsController {
@@ -70,24 +60,24 @@ export function createTts(): TtsController {
   // resolves late (see waitForVoice) can tell it's no longer the active
   // request and avoid speaking after stop() or a newer speak() call.
   let callToken = 0
-  // Once we've successfully found a Bulgarian voice, keep using that same
-  // voice object instead of re-querying getVoices() on every call.
-  // getVoices() can momentarily return an empty/stale list right after a
-  // previous utterance's `onend` fires (exactly when continuous reading
-  // calls speak() again), which otherwise looks like the voice
-  // "disappeared" after the first line or two.
-  let knownVoice: SpeechSynthesisVoice | undefined
+  // Once a voice has been found for a language, keep using that same voice
+  // object instead of re-querying getVoices() on every call. getVoices() can
+  // momentarily return an empty/stale list right after a previous utterance's
+  // `onend` fires (exactly when continuous reading calls speak() again),
+  // which otherwise looks like the voice "disappeared" after a line or two.
+  const knownVoices = new Map<string, SpeechSynthesisVoice>()
 
-  const resolveVoice = (): SpeechSynthesisVoice | undefined => {
-    if (!knownVoice) knownVoice = findBgVoice()
-    return knownVoice
+  const resolveVoice = (lang: string): SpeechSynthesisVoice | undefined => {
+    let v = knownVoices.get(lang)
+    if (!v) {
+      v = findVoice(lang)
+      if (v) knownVoices.set(lang, v)
+    }
+    return v
   }
-  synth.addEventListener('voiceschanged', () => {
-    if (!knownVoice) knownVoice = findBgVoice()
-  })
 
-  function waitForVoice(): Promise<SpeechSynthesisVoice | undefined> {
-    const existing = resolveVoice()
+  function waitForVoice(lang: string): Promise<SpeechSynthesisVoice | undefined> {
+    const existing = resolveVoice(lang)
     if (existing) return Promise.resolve(existing)
     return new Promise((resolve) => {
       let done = false
@@ -98,11 +88,11 @@ export function createTts(): TtsController {
         resolve(v)
       }
       const onChange = () => {
-        const v = resolveVoice()
+        const v = resolveVoice(lang)
         if (v) finish(v)
       }
       synth.addEventListener('voiceschanged', onChange)
-      window.setTimeout(() => finish(resolveVoice()), VOICE_WAIT_MS)
+      window.setTimeout(() => finish(resolveVoice(lang)), VOICE_WAIT_MS)
     })
   }
 
@@ -113,7 +103,7 @@ export function createTts(): TtsController {
     }
   }
 
-  const doSpeak = (text: string, voice: SpeechSynthesisVoice) => {
+  const doSpeak = (text: string, voice: SpeechSynthesisVoice, lang: string) => {
     clearWatchdog()
     // Safari has a known bug where calling cancel() when nothing is
     // actually speaking/queued corrupts the synthesis engine's internal
@@ -123,7 +113,7 @@ export function createTts(): TtsController {
     if (synth.speaking || synth.pending) synth.cancel()
 
     const utter = new SpeechSynthesisUtterance(text)
-    utter.lang = 'bg-BG'
+    utter.lang = voice.lang || ttsTag(lang)
     utter.rate = 0.95
     utter.voice = voice
     currentUtter = utter
@@ -158,23 +148,23 @@ export function createTts(): TtsController {
 
   controller.isSpeaking = () => speaking
 
-  controller.speak = (text: string) => {
+  controller.speak = (text: string, lang: string) => {
     intentionalStop = false
     const token = ++callToken
-    const existing = resolveVoice()
+    const existing = resolveVoice(lang)
     if (existing) {
-      doSpeak(text, existing)
+      doSpeak(text, existing, lang)
       return
     }
     // Voices aren't loaded yet — wait briefly instead of failing right
     // away; most of the time they finish loading within a few hundred ms.
-    waitForVoice().then((voice) => {
+    waitForVoice(lang).then((voice) => {
       if (token !== callToken) return // superseded by a newer speak()/stop()
       if (!voice) {
-        controller.onMissingVoice()
+        controller.onMissingVoice(lang)
         return
       }
-      doSpeak(text, voice)
+      doSpeak(text, voice, lang)
     })
   }
 

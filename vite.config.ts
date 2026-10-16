@@ -5,7 +5,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   base: '/bilingreader-app/',
   define: {
-    __BUILD_TAG__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC — v0.2 BLB')
+    __BUILD_TAG__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC — v0.3 langs')
   },
   plugins: [
     react(),
@@ -16,7 +16,7 @@ export default defineConfig({
       manifest: {
         name: 'Biling Reader',
         short_name: 'BilingReader',
-        description: 'Чтение параллельных текстов (BG/RU)',
+        description: 'Чтение параллельных текстов на любой паре языков',
         start_url: '/bilingreader-app/',
         scope: '/bilingreader-app/',
         display: 'standalone',

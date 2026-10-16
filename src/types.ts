@@ -64,9 +64,15 @@ export interface Book {
   roots: BookNode[]
   chapters: Chapter[]
   totalPairs: number
-  bulgarianPairs: string[]
+  // All pairs of the book in reading order (same indexing as RenderRow.idx).
+  pairs: AlignedPair[]
   meta: BookMeta | null
   cover: BookCover | null
+  // Languages of the `src` and `tgt` sides (canonical codes, see languages.ts).
+  langSrc: string
+  langTgt: string
+  // true when the book file itself declared both languages.
+  langsFromFile: boolean
 }
 
 export function bookDisplayTitle(book: Book, fallback = ''): string {
@@ -81,8 +87,9 @@ export interface RenderRow {
   showHeader: boolean
   headerTitleSrc: string
   headerTitleTgt: string
+  // Left / right column text and the language of each column.
   srcText: string
   tgtText: string
-  bulgarianText: string
-  isSrcBulgarian: boolean
+  langLeft: string
+  langRight: string
 }
