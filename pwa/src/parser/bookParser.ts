@@ -23,7 +23,10 @@ function pairArray(v: unknown): AlignedPair[] {
     const src = p['src']
     const tgt = p['tgt']
     if (typeof src !== 'string' || typeof tgt !== 'string') return []
-    return [{ src, tgt }]
+    const pair: AlignedPair = { src, tgt }
+    if (p['src_par'] === true) pair.srcPar = true
+    if (p['tgt_par'] === true) pair.tgtPar = true
+    return [pair]
   })
 }
 
@@ -222,7 +225,9 @@ export function buildRenderRows(book: Book, columnsSwapped: boolean, langSrc: st
         srcText: columnsSwapped ? p.tgt : p.src,
         tgtText: columnsSwapped ? p.src : p.tgt,
         langLeft: columnsSwapped ? langTgt : langSrc,
-        langRight: columnsSwapped ? langSrc : langTgt
+        langRight: columnsSwapped ? langSrc : langTgt,
+        // The first pair of a chapter is already set off by its header.
+        parStart: i > 0 && !!(p.srcPar || p.tgtPar)
       })
       globalIdx++
     }

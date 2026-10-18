@@ -68,6 +68,8 @@ body {
 .rowwrap { border-bottom: 0.5px solid var(--divider); background: var(--zebra1); position: relative; }
 .rowwrap.zebra { background: var(--zebra2); }
 .rowtext { font-size: 15px; line-height: 1.45; }
+/* dialogue: dash hangs, wrapped lines align with the first word */
+.rowtext.dlg { padding-left: 1.25em; text-indent: -1.25em; }
 .dimmed .rowtext { color: var(--text-dimmed); }
 .chapterhead { font-weight: 700; font-size: 15px; padding: 6px 0; background: var(--zebra1); border-bottom: 0.5px solid var(--divider); }
 /* slider */
