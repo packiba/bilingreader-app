@@ -1,6 +1,10 @@
 export interface AlignedPair {
   src: string
   tgt: string
+  // The pair starts a new paragraph in the source / target edition (from the
+  // aligner's `src_par` / `tgt_par`; absent in older books).
+  srcPar?: boolean
+  tgtPar?: boolean
 }
 
 export interface Chapter {
@@ -92,4 +96,7 @@ export interface RenderRow {
   tgtText: string
   langLeft: string
   langRight: string
+  // A paragraph starts here in at least one edition: the row gets extra space
+  // above it so paragraphs / dialogue turns are told apart from continuations.
+  parStart: boolean
 }
