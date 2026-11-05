@@ -41,7 +41,7 @@ const ScrollOuter = forwardRef<HTMLDivElement, Record<string, unknown>>((props, 
 ScrollOuter.displayName = 'ScrollOuter'
 
 export default function ReaderList() {
-  const { rows, state, onUserScrolled } = useReader()
+  const { rows, state, onUserScrolled, rememberScrollPosition } = useReader()
   const containerRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<List>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
@@ -60,10 +60,15 @@ export default function ReaderList() {
     // until the next scroll/touch gesture, which left the screen blank
     // until the user scrolled.
     const rect = el.getBoundingClientRect()
-    if (rect.width > 0 && rect.height > 0) setSize({ width: rect.width, height: rect.height })
+    if (rect.width >= 100 && rect.height >= 50) setSize({ width: rect.width, height: rect.height })
+    // iOS can report a collapsed (0-sized) box while the PWA is being
+    // backgrounded/resumed. Acting on it re-created the list at offset 0 and
+    // the "visible start = 0" it then reported overwrote the saved position.
+    // Keep the last good size instead.
     const ro = new ResizeObserver((entries) => {
       const r = entries[0].contentRect
-      setSize({ width: r.width, height: r.height })
+      if (r.width < 100 || r.height < 50) return
+      setSize((prev) => (prev.width === r.width && prev.height === r.height ? prev : { width: r.width, height: r.height }))
     })
     ro.observe(el)
     return () => ro.disconnect()
@@ -81,12 +86,37 @@ export default function ReaderList() {
   const measureKeyRef = useRef(measureKey)
   measureKeyRef.current = measureKey
   const snappedForKeyRef = useRef<string | null>(null)
+  const scrollVersionRef = useRef(0)
+  const measureStartScrollVersionRef = useRef(0)
+  // Record the scroll generation at the beginning of each re-measure. If the
+  // user scrolls while measuring, completion must not snap them back to the
+  // position that was current when measurement began.
+  useLayoutEffect(() => {
+    measureStartScrollVersionRef.current = scrollVersionRef.current
+  }, [measureKey])
+
+  useEffect(() => {
+    const el = containerRef.current?.querySelector('[data-scroll]') as HTMLElement | null
+    if (!el) return
+    const onNativeScroll = () => { scrollVersionRef.current++ }
+    el.addEventListener('scroll', onNativeScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onNativeScroll)
+  }, [size.width, size.height])
+
+  // The measure pass is mounted only until it has reported for the current
+  // key, then unmounted so the hidden DOM does not stay in memory.
+  const [measuredKey, setMeasuredKey] = useState<string | null>(null)
+  // While the list is being rebuilt / repositioned, visibleStartIndex comes
+  // from a stale offset and must not be saved as the reading position.
+  const suppressUntil = useRef(0)
+  const suppress = (ms: number) => { suppressUntil.current = Math.max(suppressUntil.current, performance.now() + ms) }
 
   const handleMeasureComplete = useCallback((heights: number[]) => {
     const m = new Map<number, number>()
     for (let i = 0; i < heights.length; i++) m.set(i, heights[i])
     heightsRef.current = m
     listRef.current?.resetAfterIndex(0, true)
+    setMeasuredKey(measureKeyRef.current)
     // A webfont can finish loading in several stages, so MeasurePass may
     // report heights more than once per mount as they get refined. Only
     // correct the scroll position the first time for a given measureKey —
@@ -98,6 +128,11 @@ export default function ReaderList() {
     // pointerup), which was silently breaking tap-to-translate.
     if (snappedForKeyRef.current === measureKeyRef.current) return
     snappedForKeyRef.current = measureKeyRef.current
+    // Only perform the corrective snap if the user has not moved the list
+    // since this measurement started. A late measurement must never override
+    // an intentional scroll.
+    if (scrollVersionRef.current !== measureStartScrollVersionRef.current) return
+    suppress(600)
     const el = containerRef.current?.querySelector('[data-scroll]') as HTMLElement | null
     if (el) el.style.scrollBehavior = 'auto'
     listRef.current?.scrollToItem(currentPairRef.current, 'start')
@@ -120,6 +155,7 @@ export default function ReaderList() {
     if (!listRef.current) return
     const el = containerRef.current?.querySelector('[data-scroll]') as HTMLElement | null
     if (el) el.style.scrollBehavior = req.isSlow ? 'smooth' : 'auto'
+    if (!req.isSlow) suppress(600)
     listRef.current.scrollToItem(req.index, 'start')
     pendingScroll.current = null
   }, [state.scrollRequest])
@@ -129,6 +165,7 @@ export default function ReaderList() {
     if (!listRef.current) return
     const el = containerRef.current?.querySelector('[data-scroll]') as HTMLElement | null
     if (el) el.style.scrollBehavior = 'auto'
+    suppress(600)
     listRef.current.scrollToItem(pendingScroll.current, 'start')
     pendingScroll.current = null
   }, [size.width, size.height, rows.length])
@@ -150,16 +187,20 @@ export default function ReaderList() {
     // browser's own scroll/compositing work on the same frame budget.
     // Coalesce to at most one dispatch per animation frame.
     pendingIndexRef.current = p.visibleStartIndex
+    // Keep the persistence ref current before the next animation frame. If
+    // iOS backgrounds/kills the PWA between this callback and the RAF,
+    // pagehide can still write the newest known visible row.
+    if (performance.now() >= suppressUntil.current) rememberScrollPosition(p.visibleStartIndex)
     if (scrollRafRef.current != null) return
     scrollRafRef.current = requestAnimationFrame(() => {
       scrollRafRef.current = null
-      if (pendingIndexRef.current != null) onUserScrolled(pendingIndexRef.current)
+      if (pendingIndexRef.current != null && performance.now() >= suppressUntil.current) onUserScrolled(pendingIndexRef.current)
     })
-  }, [onUserScrolled])
+  }, [onUserScrolled, rememberScrollPosition])
 
   return (
     <div ref={containerRef} style={{ position: 'absolute', inset: 0 }}>
-      {size.width >= 100 && rows.length > 0 && (
+      {size.width >= 100 && rows.length > 0 && measuredKey !== measureKey && (
         <MeasurePass
           key={measureKey}
           rows={rows}

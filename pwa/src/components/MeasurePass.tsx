@@ -1,20 +1,19 @@
-import { memo, useLayoutEffect, useRef } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { RenderRow } from '../types'
 import type { ExpandMode } from '../store/settings'
 import PairRowContent from './PairRowContent'
 
 const ESTIMATED_ROW = 120
+// Rows are measured in small batches and only CHUNK rows are ever in the DOM
+// at once. Previously the whole book (tens of thousands of nodes) was mounted
+// off-screen in one go and then left mounted for the life of the page, which
+// froze the main thread on every re-measure and kept a huge hidden DOM in
+// memory on the iPad.
+const CHUNK = 100
 
-// Renders every row once, off-screen but with the exact same markup and width
-// the reader uses, and reports each row's real height. The reader list then
-// works off this static height map only — it never re-measures rows while the
-// user scrolls, so nothing ever shifts under the viewport (the cause of the
-// "jumps" the reader had with react-window's incremental measurement).
-//
-// Measurement is deferred until fonts have loaded: capturing heights while
-// the fallback font is active produces stale sizes that stop matching reality
-// the moment the real webfont swaps in, which made every row overflow its slot
-// and the scroll position drift.
+// Renders rows off-screen, with the exact same markup and width the reader
+// uses, and reports every row's real height. The reader list then works off
+// this static height map only — it never re-measures while the user scrolls.
 function MeasurePass({
   rows,
   width,
@@ -31,49 +30,46 @@ function MeasurePass({
   const rootRef = useRef<HTMLDivElement>(null)
   const onCompleteRef = useRef(onComplete)
   onCompleteRef.current = onComplete
-  const rowsRef = useRef(rows)
-  rowsRef.current = rows
+  const heightsRef = useRef<number[]>([])
+  const [ready, setReady] = useState(false)
+  const [start, setStart] = useState(0)
+
+  // Wait for webfonts (if any) so heights match the final glyph metrics;
+  // never wait longer than 1.5 s in case fonts.ready stalls on WebKit.
+  useEffect(() => {
+    let cancelled = false
+    const go = () => { if (!cancelled) setReady(true) }
+    const timer = window.setTimeout(go, 1500)
+    const fonts = document.fonts
+    if (fonts?.ready) fonts.ready.then(go, go)
+    else go()
+    return () => { cancelled = true; window.clearTimeout(timer) }
+  }, [])
 
   useLayoutEffect(() => {
+    if (!ready) return
     const root = rootRef.current
     if (!root) return
-    let timer = 0
-    let lastKey = ''
-    const take = () => {
-      const heights: number[] = new Array(rowsRef.current.length)
-      for (let i = 0; i < rowsRef.current.length; i++) {
-        const child = root.children[i] as HTMLElement | undefined
-        // Fall back rather than leaving a hole: a missing/zero reading here
-        // (e.g. a row whose text happens to be empty, or one the DOM hasn't
-        // painted yet) used to leave that index sized at 0 or undefined,
-        // which react-window still has to render *some* slot for — visually
-        // that's a blank gap where a real row should be while scrolling.
-        const h = child?.offsetHeight
-        heights[i] = h && h > 0 ? h : ESTIMATED_ROW
-      }
-      const key = heights.join(',')
-      if (key === lastKey) return
-      lastKey = key
-      onCompleteRef.current(heights)
+    const end = Math.min(start + CHUNK, rows.length)
+    for (let i = start; i < end; i++) {
+      const h = (root.children[i - start] as HTMLElement | undefined)?.offsetHeight
+      heightsRef.current[i] = h && h > 0 ? h : ESTIMATED_ROW
     }
-    const schedule = () => {
-      if (timer) window.clearTimeout(timer)
-      timer = window.setTimeout(take, 0)
+    if (end >= rows.length) {
+      onCompleteRef.current(heightsRef.current.slice(0, rows.length))
+      return
     }
-    const fonts = document.fonts
-    // Measurement must wait for real webfonts: capturing with the fallback
-    // font yields sizes that stop matching as soon as the webfont swaps in.
-    const ready = fonts ? fonts.ready.then(() => {}) : Promise.resolve()
-    ready.then(schedule).catch(schedule)
-    fonts?.addEventListener?.('loadingdone', schedule)
-    // Safety net in case fonts.ready never settles on some WebKit builds.
-    timer = window.setTimeout(take, 2000)
-    return () => {
-      if (timer) window.clearTimeout(timer)
-      fonts?.removeEventListener?.('loadingdone', schedule)
-      onCompleteRef.current = () => {}
-    }
-  }, [])
+    // Yield to the browser between batches so scrolling/touches stay alive.
+    // requestAnimationFrame guarantees a paint/input opportunity between
+    // batches; a chain of zero-delay timers can otherwise starve rendering on
+    // slower mobile WebKit devices.
+    const frame = window.requestAnimationFrame(() => setStart(end))
+    return () => window.cancelAnimationFrame(frame)
+  }, [ready, start, rows])
+
+  const end = Math.min(start + CHUNK, rows.length)
+  const slice: number[] = []
+  if (ready) for (let i = start; i < end; i++) slice.push(i)
 
   return (
     <div
@@ -82,7 +78,7 @@ function MeasurePass({
       data-measure-root
       style={{ position: 'absolute', left: -10000, top: 0, width, visibility: 'hidden', pointerEvents: 'none' }}
     >
-      {rows.map((_, i) => (
+      {slice.map((i) => (
         <div className="rowwrap" key={i}>
           <PairRowContent rows={rows} index={i} dark={false} fontSize={fontSize} expandMode={expandMode} read={false} />
         </div>
