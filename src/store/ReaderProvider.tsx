@@ -36,6 +36,41 @@ export interface ReaderState {
   scrollRequest: { index: number; token: number; isSlow: boolean } | null
 }
 
+const PROGRESS_KEY = 'biling_progress_'
+const LAST_BOOK_KEY = 'biling_last_book'
+
+function readMirror(id: string): db.BookProgress | undefined {
+  try {
+    const raw = localStorage.getItem(PROGRESS_KEY + id)
+    return raw ? (JSON.parse(raw) as db.BookProgress) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function normalizeProgress(progress: db.BookProgress | undefined, totalPairs: number): db.BookProgress {
+  const maxPair = Math.max(0, totalPairs - 1)
+  const maxRead = Math.max(-1, totalPairs - 1)
+  const lastPair = Number.isFinite(progress?.lastPair)
+    ? Math.max(0, Math.min(Math.trunc(progress!.lastPair), maxPair))
+    : 0
+  const readThrough = Number.isFinite(progress?.readThrough)
+    ? Math.max(-1, Math.min(Math.trunc(progress!.readThrough), maxRead))
+    : -1
+  const readExceptions = Array.isArray(progress?.readExceptions)
+    ? [...new Set(progress!.readExceptions
+        .filter((value): value is number => Number.isFinite(value))
+        .map(Math.trunc)
+        .filter((value) => value >= 0 && value <= readThrough))]
+    : []
+  return {
+    lastPair,
+    readThrough,
+    readExceptions,
+    updatedAt: Number.isFinite(progress?.updatedAt) ? progress!.updatedAt : 0
+  }
+}
+
 function initialSettings() {
   const s = loadSettings()
   return {
@@ -217,6 +252,7 @@ interface ReaderContextValue {
   markAsReadAndNext: (index: number) => void
   markAsUnread: (index: number) => void
   onUserScrolled: (index: number) => void
+  rememberScrollPosition: (index: number) => void
   setCurrentPair: (index: number, isSlow?: boolean) => void
   goToPrevChapter: () => void
   goToNextChapter: () => void
@@ -249,6 +285,11 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
   const stateRef = useRef(state)
   stateRef.current = state
   const persistTimer = useRef<number | null>(null)
+  const persistMaxTimer = useRef<number | null>(null)
+  // The reducer may not have rendered the latest scroll event yet when iOS
+  // sends pagehide. Keep the newest known position synchronously as a durable
+  // fallback for the persistence snapshot.
+  const latestPositionRef = useRef<{ bookId: string; index: number } | null>(null)
   const ttsRef = useRef<TtsController | null>(null)
   // Lives outside the reducer: purely transient UI state, not persisted, and
   // deliberately a single shared slot (not per-row local state) so opening a
@@ -272,21 +313,41 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     )
   }, [])
 
+  const clearPersistTimers = useCallback(() => {
+    if (persistTimer.current != null) { window.clearTimeout(persistTimer.current); persistTimer.current = null }
+    if (persistMaxTimer.current != null) { window.clearTimeout(persistMaxTimer.current); persistMaxTimer.current = null }
+  }, [])
+
   const flush = useCallback((s: ReaderState) => {
     if (!s.bookId || !s.book) return
-    db.putProgress(s.bookId, {
-      lastPair: s.currentPair,
+    clearPersistTimers()
+    const latest = latestPositionRef.current
+    const lastPair = latest?.bookId === s.bookId ? latest.index : s.currentPair
+    const snapshot: db.BookProgress = {
+      lastPair,
       readThrough: s.readThrough,
-      readExceptions: s.readExceptions
-    })
-  }, [])
+      readExceptions: s.readExceptions,
+      updatedAt: Date.now()
+    }
+    // localStorage is synchronous, so this survives the app being suspended or
+    // killed a moment later — IndexedDB writes started at that point often
+    // never complete on iOS. IndexedDB stays the main store; on open the
+    // newer of the two wins.
+    try { localStorage.setItem(PROGRESS_KEY + s.bookId, JSON.stringify(snapshot)) } catch { /* quota */ }
+    try { localStorage.setItem(LAST_BOOK_KEY, s.bookId) } catch { /* quota */ }
+    db.putProgress(s.bookId, snapshot).catch(() => { /* best-effort */ })
+  }, [clearPersistTimers])
 
   const schedulePersist = useCallback(() => {
     if (persistTimer.current != null) window.clearTimeout(persistTimer.current)
-    persistTimer.current = window.setTimeout(() => {
-      persistTimer.current = null
-      flush(stateRef.current)
-    }, 500)
+    // Debounce quiet periods, but impose a maximum wait during continuous
+    // scrolling. Otherwise a long scroll can keep resetting the 500 ms timer
+    // forever and no recent position reaches localStorage until the gesture
+    // stops.
+    persistTimer.current = window.setTimeout(() => flush(stateRef.current), 500)
+    if (persistMaxTimer.current == null) {
+      persistMaxTimer.current = window.setTimeout(() => flush(stateRef.current), 1000)
+    }
   }, [flush])
 
   // The text and language that get read aloud for a pair: the book's `tgt`
@@ -308,9 +369,11 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
       return
     }
     dispatch({ type: 'SPEAK', index: nextIdx, continuous: true })
+    latestPositionRef.current = s.bookId ? { bookId: s.bookId, index: nextIdx } : null
     dispatch({ type: 'SCROLL', index: nextIdx, isSlow: true })
+    schedulePersist()
     ttsRef.current?.speak(target.text, target.lang)
-  }, [])
+  }, [schedulePersist])
 
   if (!ttsRef.current) {
     const tts = createTts()
@@ -331,10 +394,7 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
   }
 
   useEffect(() => {
-    const onHide = () => {
-      if (persistTimer.current != null) window.clearTimeout(persistTimer.current)
-      flush(stateRef.current)
-    }
+    const onHide = () => flush(stateRef.current)
     window.addEventListener('pagehide', onHide)
     document.addEventListener('visibilitychange', onHide)
     return () => {
@@ -344,10 +404,11 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
   }, [flush])
 
   useEffect(() => {
-    db.getBooks().then((books) => dispatch({ type: 'SET_BOOKS', books }))
-    db.getMeta('lastBookId').then((id) => {
-      if (id) openBook(id)
-    })
+    db.getBooks().then((books) => dispatch({ type: 'SET_BOOKS', books })).catch(() => {})
+    let lastId: string | null = null
+    try { lastId = localStorage.getItem(LAST_BOOK_KEY) } catch { /* ignore */ }
+    if (lastId) openBook(lastId)
+    else db.getMeta('lastBookId').then((id) => { if (id) openBook(id) }).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -357,7 +418,12 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
       const stored = await db.getBook(id)
       if (!stored) throw new Error('Книга не найдена')
       const book = parseBook(stored.rawJson)
-      const progress = (await db.getProgress(id)) ?? { lastPair: 0, readThrough: -1, readExceptions: [] }
+      const stored_p = await db.getProgress(id).catch(() => undefined)
+      const mirror = readMirror(id)
+      const newestProgress = mirror && (mirror.updatedAt ?? 0) >= (stored_p?.updatedAt ?? 0) ? mirror : stored_p
+      const progress = normalizeProgress(newestProgress, book.totalPairs)
+      latestPositionRef.current = { bookId: id, index: progress.lastPair }
+      try { localStorage.setItem(LAST_BOOK_KEY, id) } catch { /* ignore */ }
       await db.setMeta('lastBookId', id).catch(() => {})
       dispatch({
         type: 'OPENED',
@@ -410,6 +476,10 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
 
   const deleteBook = useCallback(async (id: string) => {
     await db.deleteBook(id)
+    try {
+      localStorage.removeItem(PROGRESS_KEY + id)
+      if (localStorage.getItem(LAST_BOOK_KEY) === id) localStorage.removeItem(LAST_BOOK_KEY)
+    } catch { /* ignore */ }
     const books = await db.getBooks()
     dispatch({ type: 'SET_BOOKS', books })
     if (stateRef.current.bookId === id) {
@@ -446,6 +516,8 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     const total = s.book?.totalPairs ?? 0
     const clamped = Math.max(0, Math.min(index, total - 1))
     dispatch({ type: 'READ', index: clamped })
+    const next = clamped + 1 < total ? clamped + 1 : clamped
+    if (s.bookId) latestPositionRef.current = { bookId: s.bookId, index: next }
     if (clamped + 1 < total) {
       dispatch({ type: 'SCROLL', index: clamped + 1, isSlow: true })
     }
@@ -457,7 +529,14 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     schedulePersist()
   }, [schedulePersist])
 
+  const rememberScrollPosition = useCallback((index: number) => {
+    const s = stateRef.current
+    if (s.bookId) latestPositionRef.current = { bookId: s.bookId, index }
+  }, [])
+
   const onUserScrolled = useCallback((index: number) => {
+    const s = stateRef.current
+    if (s.bookId) latestPositionRef.current = { bookId: s.bookId, index }
     dispatch({ type: 'USER_SCROLLED', index })
     schedulePersist()
     // The popup is positioned at fixed screen coordinates, not tied to the
@@ -469,7 +548,9 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
   const setCurrentPair = useCallback((index: number, isSlow = false) => {
     const s = stateRef.current
     const total = s.book?.totalPairs ?? 0
-    dispatch({ type: 'SCROLL', index: Math.max(0, Math.min(index, total - 1)), isSlow })
+    const target = Math.max(0, Math.min(index, total - 1))
+    if (s.bookId) latestPositionRef.current = { bookId: s.bookId, index: target }
+    dispatch({ type: 'SCROLL', index: target, isSlow })
     schedulePersist()
   }, [schedulePersist])
 
@@ -596,7 +677,7 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     state, rows, chapterStarts,
     isRead: isReadFn,
     importFile, openBook, deleteBook, openLibrary, backToBook, closeBook,
-    markAsReadAndNext, markAsUnread, onUserScrolled, setCurrentPair,
+    markAsReadAndNext, markAsUnread, onUserScrolled, rememberScrollPosition, setCurrentPair,
     goToPrevChapter, goToNextChapter,
     toggleTheme, toggleColumns, toggleExpandMode, expandColumn, setFontSize,
     toggleSpeak, startContinuousReading, stopSpeaking, translateWordAction, setTtsSide, dismissError,

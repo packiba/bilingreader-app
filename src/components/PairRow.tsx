@@ -1,4 +1,4 @@
-import { memo, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { RenderRow } from '../types'
 import { useReaderRow } from '../store/ReaderProvider'
@@ -13,9 +13,24 @@ const TAP_MAX_MS = 450
 
 // True while the user has a text selection (long-press word selection and its
 // handles, or a mouse drag). Taps and swipes must stay out of the way then.
-function selectionActive(): boolean {
+// A selection that nobody has touched for a while (or whose text was recycled
+// out of the DOM by the virtual list) used to block swipes and taps forever:
+// the selection check stayed true, so every gesture was silently dropped until
+// the app was restarted. Such a stale selection is cleared instead.
+const SELECTION_STALE_MS = 4000
+let lastSelectionChange = 0
+if (typeof document !== 'undefined') {
+  document.addEventListener('selectionchange', () => { lastSelectionChange = performance.now() })
+}
+function selectionBlocks(): boolean {
   const sel = window.getSelection()
-  return !!sel && sel.rangeCount > 0 && !sel.isCollapsed
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return false
+  const detached = !!sel.anchorNode && !sel.anchorNode.isConnected
+  if (detached || performance.now() - lastSelectionChange > SELECTION_STALE_MS) {
+    sel.removeAllRanges()
+    return false
+  }
+  return true
 }
 
 interface GestureState {
@@ -25,6 +40,7 @@ interface GestureState {
   active: boolean
   moved: boolean
   target: Element | null
+  pointerId: number
 }
 
 function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
@@ -36,6 +52,27 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
   const gesture = useRef<GestureState | null>(null)
   const speakerGesture = useRef<GestureState | null>(null)
   const longPressFired = useRef(false)
+  // The swipe is recognised mid-gesture, with the finger still down. Marking
+  // the row read immediately starts a programmatic (smooth) scroll under that
+  // finger, which WebKit answers by cancelling/wedging the touch sequence —
+  // the scroller then freezes for a while and swipes stop arriving. So the
+  // action is only recorded here and applied once the finger is lifted.
+  const pendingSwipe = useRef<{ action: 'read' | 'unread'; pointerId: number } | null>(null)
+  const applySwipe = (pointerId: number) => {
+    const pending = pendingSwipe.current
+    if (!pending || pending.pointerId !== pointerId) return
+    pendingSwipe.current = null
+    if (pending.action === 'read') reader.markAsReadAndNext(index)
+    else reader.markAsUnread(index)
+  }
+
+  // A virtualized row can unmount while a gesture is in flight. Never let a
+  // deferred gesture survive the lifetime of the row that received it.
+  useEffect(() => () => {
+    pendingSwipe.current = null
+    gesture.current = null
+    speakerGesture.current = null
+  }, [])
 
   const speaking = reader.speakingPair === index
   const speakerColor = speaking && reader.isContinuousReading
@@ -47,20 +84,22 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
   const popup = reader.wordPopup?.index === index ? reader.wordPopup : null
 
   const onPointerDown = (e: React.PointerEvent) => {
+    if (!e.isPrimary || (e.pointerType === 'mouse' && e.button !== 0)) return
     if (e.target instanceof Element && e.target.closest('.speakerbtn')) return
     // A tap while a selection exists only dismisses it (native behaviour).
-    if (selectionActive()) { gesture.current = null; return }
+    if (selectionBlocks()) { gesture.current = null; return }
     const target = e.target instanceof Element ? e.target : null
-    gesture.current = { sx: e.clientX, sy: e.clientY, t0: performance.now(), active: false, moved: false, target }
+    pendingSwipe.current = null
+    gesture.current = { sx: e.clientX, sy: e.clientY, t0: performance.now(), active: false, moved: false, target, pointerId: e.pointerId }
   }
 
   const onPointerMove = (e: React.PointerEvent) => {
     const g = gesture.current
-    if (!g || e.target instanceof Element && (e.target as Element).closest('.speakerbtn')) return
+    if (!g || g.pointerId !== e.pointerId || e.target instanceof Element && (e.target as Element).closest('.speakerbtn')) return
     // The user is selecting text (mouse/pen drag, or selection just started):
     // a horizontal move must extend the selection, not mark the row as read
     // and scroll the list away from under it.
-    if (selectionActive()) { gesture.current = null; setDx(0); return }
+    if (selectionBlocks()) { gesture.current = null; setDx(0); return }
     const dxv = e.clientX - g.sx
     const dyv = e.clientY - g.sy
     if (!g.active && Math.hypot(dxv, dyv) > 14) {
@@ -69,8 +108,7 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
     }
     if (g.active) {
       if (Math.abs(dxv) > Math.abs(dyv) && Math.abs(dxv) > SWIPE_THRESHOLD) {
-        if (dxv < 0) reader.markAsReadAndNext(index)
-        else reader.markAsUnread(index)
+        pendingSwipe.current = { action: dxv < 0 ? 'read' : 'unread', pointerId: e.pointerId }
         gesture.current = null
         setDx(0)
       } else if (Math.abs(dxv) > Math.abs(dyv)) {
@@ -85,7 +123,7 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
 
   const tryOpenWord = (clientX: number, clientY: number, target: Element | null) => {
     if (!target) return
-    if (selectionActive()) return
+    if (selectionBlocks()) return
     const textEl = target.closest('.rowtext, .chapterhead')
     if (!textEl) return
     // The tapped column knows its own language and the language of the other
@@ -103,7 +141,9 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
   }
 
   const onPointerUp = (e: React.PointerEvent) => {
+    applySwipe(e.pointerId)
     const g = gesture.current
+    if (g && g.pointerId !== e.pointerId) return
     gesture.current = null
     setDx(0)
     if (!g || g.moved) return
@@ -117,7 +157,11 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
 
   const CANCEL_AS_TAP_MS = 300
 
-  const onPointerCancel = () => {
+  const onPointerCancel = (e: React.PointerEvent) => {
+    // pointercancel means the browser/OS took ownership of the gesture; it is
+    // not a completed user swipe. Discard it rather than mutating reading
+    // progress while the finger may still be down.
+    if (pendingSwipe.current?.pointerId === e.pointerId) pendingSwipe.current = null
     // touch-action: pan-y exists so vertical scrolling stays native/smooth,
     // but that same setting lets the browser claim ANY touch with even a
     // couple of pixels of natural finger jitter as "the user is starting to
@@ -131,6 +175,7 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
     // that got misclassified as a scroll — so open the word using the
     // coordinates captured at pointerdown, before any claim happened.
     const g = gesture.current
+    if (g && g.pointerId !== e.pointerId) return
     gesture.current = null
     setDx(0)
     if (!g || g.moved || performance.now() - g.t0 >= CANCEL_AS_TAP_MS) return
@@ -155,13 +200,14 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
 
   const onSpeakerDown = (e: React.PointerEvent) => {
     e.stopPropagation()
-    speakerGesture.current = { sx: e.clientX, sy: e.clientY, t0: performance.now(), active: false, moved: false, target: null }
+    speakerGesture.current = { sx: e.clientX, sy: e.clientY, t0: performance.now(), active: false, moved: false, target: null, pointerId: e.pointerId }
     longPressFired.current = false
   }
 
   const onSpeakerUp = (e: React.PointerEvent) => {
     e.stopPropagation()
     const g = speakerGesture.current
+    if (g && g.pointerId !== e.pointerId) return
     speakerGesture.current = null
     if (!g) return
     const dt = performance.now() - g.t0
