@@ -54,7 +54,7 @@ export default function PairRowContent({
   return (
     <>
       {row.showHeader && (
-        <ChapterHeader titleSrc={row.headerTitleSrc} titleTgt={row.headerTitleTgt} langLeft={row.langLeft} langRight={row.langRight} fontSize={fontSize} dark={dark} />
+        <ChapterHeader titleSrc={row.headerTitleSrc} titleTgt={row.headerTitleTgt} langLeft={row.langLeft} langRight={row.langRight} fontSize={fontSize} dark={dark} expand={expand} />
       )}
       <div style={{ position: 'relative', paddingTop: gap }}>
         <div style={{ transform: `translateX(${dx}px)` }}>{cellContent}</div>
