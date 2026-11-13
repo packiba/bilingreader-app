@@ -1,42 +1,48 @@
 import { useReader } from '../store/ReaderProvider'
 import { langName } from '../languages'
 
-// Choose the language of the left and right column of a multilingual book.
-export default function LanguageSelector({ onClose }: { onClose: () => void }) {
+// Picks the language of one column of a multilingual book. `side` is the column
+// as it is on screen; the book's own src/tgt order may be swapped.
+export default function LanguageSelector({ side, onClose }: { side: 'left' | 'right'; onClose: () => void }) {
   const { state, setLanguages } = useReader()
   const languages = state.book?.multi?.languages ?? []
-  const left = state.langSrc
-  const right = state.langTgt
+  const swapped = state.columnsSwapped
+  const shownLeft = swapped ? state.langTgt : state.langSrc
+  const shownRight = swapped ? state.langSrc : state.langTgt
+  const current = side === 'left' ? shownLeft : shownRight
 
-  // Picking the language already used on the other side swaps the two, so the
-  // columns never end up showing the same language.
-  const pickLeft = (lang: string) => void setLanguages(lang, lang === right ? left : right)
-  const pickRight = (lang: string) => void setLanguages(lang === left ? right : left, lang)
-
-  const column = (title: string, current: string, pick: (lang: string) => void) => (
-    <div className="langcol">
-      <div className="langhead">{title}</div>
-      {languages.map((lang) => (
-        <button
-          key={lang}
-          className={`btn langopt ${lang === current ? 'primary' : ''}`}
-          onClick={() => pick(lang)}
-        >
-          {langName(lang)}
-        </button>
-      ))}
-    </div>
-  )
+  // Picking the language that is already on the other side swaps the two, so
+  // both columns never show the same language.
+  const pick = (lang: string) => {
+    let left = shownLeft
+    let right = shownRight
+    if (side === 'left') {
+      if (lang === right) right = left
+      left = lang
+    } else {
+      if (lang === left) left = right
+      right = lang
+    }
+    void (swapped ? setLanguages(right, left) : setLanguages(left, right))
+    onClose()
+  }
 
   return (
     <>
       <div className="overlay" onClick={onClose} />
-      <div className="langpanel" role="dialog" aria-label="Языки колонок">
-        <div className="langcols">
-          {column('Слева', left, pickLeft)}
-          {column('Справа', right, pickRight)}
+      <div className="langpanel" role="dialog" aria-label="Язык колонки">
+        <div className="langhead">{side === 'left' ? 'Язык слева' : 'Язык справа'}</div>
+        <div className="langcol">
+          {languages.map((lang) => (
+            <button
+              key={lang}
+              className={`btn langopt ${lang === current ? 'primary' : ''}`}
+              onClick={() => pick(lang)}
+            >
+              {langName(lang)}
+            </button>
+          ))}
         </div>
-        <button className="btn" style={{ width: '100%', marginTop: 12 }} onClick={onClose}>Готово</button>
       </div>
     </>
   )

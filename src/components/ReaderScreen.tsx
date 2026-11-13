@@ -15,59 +15,75 @@ export default function ReaderScreen() {
   const { state, dismissError } = reader
   const [showToolbar, setShowToolbar] = useState(true)
   const [showSidebar, setShowSidebar] = useState(false)
-  const [showLangs, setShowLangs] = useState(false)
+  const [langSide, setLangSide] = useState<'left' | 'right' | null>(null)
   const [preview, setPreview] = useState<number | null>(null)
   const touchStart = useRef<{ y: number } | null>(null)
   const currentShown = preview ?? state.currentPair
   const totalShown = state.book ? Math.max(state.book.totalPairs, 0) : 0
+  // Languages as they are on screen (the columns can be swapped).
+  const shownLeft = state.columnsSwapped ? state.langTgt : state.langSrc
+  const shownRight = state.columnsSwapped ? state.langSrc : state.langTgt
+  const isMulti = !!state.book?.multi
 
   return (
     <div className={`app ${state.dark ? 'theme-dark' : 'theme-light'}`}>
       {showToolbar && (
         <div className="toolbar">
-          <button className="iconbtn" title="Библиотека" onClick={reader.openLibrary}>
-            <IconLibrary size={18} />
-          </button>
-          <div className="name">{state.book ? bookDisplayTitle(state.book, state.fileName) : state.fileName}</div>
-          {state.book?.multi && (
+          <div className="tb-side">
+            <button className="iconbtn" title="Библиотека" onClick={reader.openLibrary}>
+              <IconLibrary size={18} />
+            </button>
+            <div className="name">{state.book ? bookDisplayTitle(state.book, state.fileName) : state.fileName}</div>
+          </div>
+          <div className="tb-center">
+            <button
+              className="langlabel"
+              disabled={!isMulti}
+              title={isMulti ? 'Язык левой колонки' : undefined}
+              onClick={() => setLangSide('left')}
+            >
+              {shownLeft}
+            </button>
+            <button className="iconbtn" title="Поменять колонки" onClick={reader.toggleColumns}>
+              <IconSwap size={18} />
+            </button>
+            <button
+              className="langlabel"
+              disabled={!isMulti}
+              title={isMulti ? 'Язык правой колонки' : undefined}
+              onClick={() => setLangSide('right')}
+            >
+              {shownRight}
+            </button>
+          </div>
+          <div className="tb-side tb-right">
             <button
               className="iconbtn"
-              style={{ width: 'auto', minWidth: 34, padding: '0 6px', fontSize: 12, fontWeight: 700 }}
-              title="Языки колонок"
-              onClick={() => setShowLangs(true)}
+              style={{ width: 'auto', minWidth: 34, padding: '0 6px', fontSize: 12, fontWeight: 700, gap: 3 }}
+              title="Язык озвучки (нажмите, чтобы переключить)"
+              onClick={() => void reader.setTtsSide(state.ttsSide === 'tgt' ? 'src' : 'tgt')}
             >
-              {state.langSrc.toUpperCase()}·{state.langTgt.toUpperCase()}
+              <IconSpeaker size={14} />
+              {(state.ttsSide === 'tgt' ? state.langTgt : state.langSrc).toUpperCase()}
             </button>
-          )}
-          <button
-            className="iconbtn"
-            style={{ width: 'auto', minWidth: 34, padding: '0 6px', fontSize: 12, fontWeight: 700, gap: 3 }}
-            title="Язык озвучки (нажмите, чтобы переключить)"
-            onClick={() => void reader.setTtsSide(state.ttsSide === 'tgt' ? 'src' : 'tgt')}
-          >
-            <IconSpeaker size={14} />
-            {(state.ttsSide === 'tgt' ? state.langTgt : state.langSrc).toUpperCase()}
-          </button>
-          <button className="iconbtn" title="Тема" onClick={reader.toggleTheme}>
-            {state.dark ? <IconMoon size={18} /> : <IconSun size={18} />}
-          </button>
-          <button className="iconbtn" title="Поменять колонки" onClick={reader.toggleColumns}>
-            <IconSwap size={18} />
-          </button>
-          <button
-            className="iconbtn"
-            title="Разворот в одну колонку"
-            onClick={reader.toggleExpandMode}
-            style={{ color: state.expandMode === 'NONE' ? undefined : 'var(--accent)' }}
-          >
-            {state.expandMode === 'NONE' || state.expandMode === 'AWAITING' ? <IconExpand size={18} /> : <IconCollapse size={18} />}
-          </button>
-          <button className="iconbtn" title="Меньше шрифт" onClick={() => reader.setFontSize(state.fontSize - 1)}>
-            <IconMinus size={18} />
-          </button>
-          <button className="iconbtn" title="Больше шрифт" onClick={() => reader.setFontSize(state.fontSize + 1)}>
-            <IconPlus size={18} />
-          </button>
+            <button className="iconbtn" title="Тема" onClick={reader.toggleTheme}>
+              {state.dark ? <IconMoon size={18} /> : <IconSun size={18} />}
+            </button>
+            <button
+              className="iconbtn"
+              title="Разворот в одну колонку"
+              onClick={reader.toggleExpandMode}
+              style={{ color: state.expandMode === 'NONE' ? undefined : 'var(--accent)' }}
+            >
+              {state.expandMode === 'NONE' || state.expandMode === 'AWAITING' ? <IconExpand size={18} /> : <IconCollapse size={18} />}
+            </button>
+            <button className="iconbtn" title="Меньше шрифт" onClick={() => reader.setFontSize(state.fontSize - 1)}>
+              <IconMinus size={18} />
+            </button>
+            <button className="iconbtn" title="Больше шрифт" onClick={() => reader.setFontSize(state.fontSize + 1)}>
+              <IconPlus size={18} />
+            </button>
+          </div>
         </div>
       )}
 
@@ -117,7 +133,7 @@ export default function ReaderScreen() {
       )}
 
       {showSidebar && <ChapterSidebar onClose={() => setShowSidebar(false)} />}
-      {showLangs && state.book?.multi && <LanguageSelector onClose={() => setShowLangs(false)} />}
+      {langSide && isMulti && <LanguageSelector side={langSide} onClose={() => setLangSide(null)} />}
       {state.error && <div className="snackbar" onClick={dismissError}>{state.error}</div>}
     </div>
   )
