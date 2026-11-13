@@ -93,8 +93,17 @@ export interface MultiData {
   chapters: MultiChapter[]
 }
 
+// The title shown for a book: in Russian when one of its languages is Russian,
+// otherwise the title of the first side that has one.
+export function preferredTitle(book: Book): string | null {
+  const m = book.meta
+  if (!m) return null
+  if (book.langTgt === 'ru' && !book.multi) return m.titleTgt ?? m.titleSrc
+  return m.titleSrc ?? m.titleTgt
+}
+
 export function bookDisplayTitle(book: Book, fallback = ''): string {
-  const title = book.meta?.titleTgt ?? book.meta?.titleSrc
+  const title = preferredTitle(book)
   const author = book.meta?.author
   const parts = [author, title].filter((p): p is string => p != null && p.trim() !== '')
   return parts.join(' — ') || fallback

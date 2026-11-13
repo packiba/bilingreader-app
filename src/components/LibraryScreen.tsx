@@ -62,20 +62,26 @@ export default function LibraryScreen() {
             {state.isImporting && <div className="meta">Открываю…</div>}
           </div>
           {state.books.map((b) => (
-            <div className="card" key={b.id} style={{ cursor: 'pointer' }} onClick={() => void openBook(b.id)}>
+            <div className="card book" key={b.id} style={{ cursor: 'pointer' }} onClick={() => void openBook(b.id)}>
               {b.coverDataUrl && (
                 <div className="cover-wrap">
                   <img className="cover" src={b.coverDataUrl} alt="" />
                 </div>
               )}
-              <button className="btn delete" onClick={(e) => {
-                e.stopPropagation()
-                // One stray tap used to wipe the book and its reading progress.
-                if (window.confirm(`Удалить «${b.title || b.name}» вместе с прогрессом чтения?`)) void deleteBook(b.id)
-              }}>Удалить</button>
-              <div className="title">{b.title || b.name}</div>
-              {b.author && <div className="meta">{b.author}</div>}
-              {b.langSrc && b.langTgt && <div className="meta">{b.langSrc.toUpperCase()} → {b.langTgt.toUpperCase()}</div>}
+              <div className="bookinfo">
+                <div className="title">{b.title || b.name}</div>
+                {b.author && <div className="meta">{b.author}</div>}
+                <div className="bookfoot">
+                  <div className="meta">
+                    {(b.langs ?? [b.langSrc, b.langTgt]).filter(Boolean).map((l) => l!.toUpperCase()).join(', ')}
+                  </div>
+                  <button className="btn delete" onClick={(e) => {
+                    e.stopPropagation()
+                    // One stray tap used to wipe the book and its reading progress.
+                    if (window.confirm(`Удалить «${b.title || b.name}» вместе с прогрессом чтения?`)) void deleteBook(b.id)
+                  }}>Удалить</button>
+                </div>
+              </div>
             </div>
           ))}
         </div>

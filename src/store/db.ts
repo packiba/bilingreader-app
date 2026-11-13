@@ -119,6 +119,8 @@ export interface StoredBook {
   // the user chose to have read aloud.
   langSrc?: string
   langTgt?: string
+  // Every language of the book (more than two for a multilingual book).
+  langs?: string[]
   ttsSide?: 'src' | 'tgt'
 }
 

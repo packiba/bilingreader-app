@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Book, RenderRow } from '../types'
+import { preferredTitle } from '../types'
 import { buildRenderRows, computeChapterStarts, parseBook, withLanguages } from '../parser/bookParser'
 import * as db from './db'
 import type { StoredBook } from './db'
@@ -490,7 +491,7 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
       const book = parseBook(text)
       const id = `${file.name}-${Date.now()}`
       const name = file.name.replace(/\.(json|blb)$/i, '')
-      const title = book.meta?.titleTgt || book.meta?.titleSrc || undefined
+      const title = preferredTitle(book) || undefined
       const author = book.meta?.author || undefined
       const coverDataUrl = book.cover ? `data:${book.cover.mime};base64,${book.cover.dataBase64}` : undefined
       await db.putBook({
@@ -504,11 +505,12 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
         coverDataUrl,
         langSrc: book.langSrc,
         langTgt: book.langTgt,
+        langs: book.multi ? book.multi.languages : [book.langSrc, book.langTgt],
         ttsSide: 'tgt'
       })
+      // The book is only added to the library; the user opens it from there.
       const books = await db.getBooks().catch(() => null)
       if (books) dispatch({ type: 'SET_BOOKS', books })
-      await openBook(id, { preparsed: book })
     } catch (e) {
       dispatch({ type: 'SET_ERROR', message: db.storageErrorMessage(e, 'Не удалось открыть файл') })
     } finally {
