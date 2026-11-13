@@ -3,7 +3,7 @@ name: Deploy PWA to GitHub Pages
 on:
   push:
     branches: [master]
-    paths: ['pwa/**', '.github/workflows/deploy-pwa.yml']
+    paths: ['src/**', 'public/**', 'index.html', 'package.json', 'vite.config.ts', '.github/workflows/deploy-pwa.yml']
 
 permissions:
   contents: read
@@ -23,13 +23,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: pwa/package-lock.json
       - run: npm ci
-        working-directory: pwa
       - run: npm run build
-        working-directory: pwa
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:
-          path: pwa/dist
+          path: dist
       - uses: actions/deploy-pages@v5
