@@ -56,7 +56,7 @@ export default function LanguageSelector({
         <span style={{ fontSize: 11, fontWeight: 700 }}>
           {getLangName(selectedLangLeft)} / {getLangName(selectedLangRight)}
         </span>
-        <IconDropdown size={14} style={{ marginLeft: 4 }} />
+        <span style={{ marginLeft: 4, display: 'inline-flex' }}><IconDropdown size={14} /></span>
       </button>
 
       {showMenu && (
