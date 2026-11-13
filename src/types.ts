@@ -122,4 +122,14 @@ export interface RenderRow {
   // A paragraph starts here in at least one edition: the row gets extra space
   // above it so paragraphs / dialogue turns are told apart from continuations.
   parStart: boolean
+  // Three-column mode: every column with its text, language and the language a
+  // tapped word is translated into. When set, it replaces srcText / tgtText.
+  cells?: RenderCell[]
+  headerCells?: string[]
+}
+
+export interface RenderCell {
+  text: string
+  lang: string
+  other: string
 }

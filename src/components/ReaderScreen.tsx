@@ -15,7 +15,8 @@ export default function ReaderScreen() {
   const { state, dismissError } = reader
   const [showToolbar, setShowToolbar] = useState(true)
   const [showSidebar, setShowSidebar] = useState(false)
-  const [langSide, setLangSide] = useState<'left' | 'right' | null>(null)
+  // Column whose language is being chosen (0 = left, 1 = middle or right, 2 = right).
+  const [langCol, setLangCol] = useState<number | null>(null)
   const [preview, setPreview] = useState<number | null>(null)
   const touchStart = useRef<{ y: number } | null>(null)
   const currentShown = preview ?? state.currentPair
@@ -24,6 +25,15 @@ export default function ReaderScreen() {
   const shownLeft = state.columnsSwapped ? state.langTgt : state.langSrc
   const shownRight = state.columnsSwapped ? state.langSrc : state.langTgt
   const isMulti = !!state.book?.multi
+  const canThree = (state.book?.multi?.languages.length ?? 0) >= 3
+  const three = state.cols === 3
+  // One column taken to the whole screen: the bar shows only its language.
+  const expandedCol = state.expandMode === 'SRC' ? 0
+    : state.expandMode === 'MID' ? (three ? 1 : -1)
+    : state.expandMode === 'TGT' ? (three ? 2 : 1)
+    : -1
+  const expanded = expandedCol >= 0
+  const expandedLang = three ? state.colLangs[expandedCol] : expandedCol === 0 ? shownLeft : shownRight
 
   return (
     <div className={`app ${state.dark ? 'theme-dark' : 'theme-light'}`}>
@@ -36,35 +46,68 @@ export default function ReaderScreen() {
             <div className="name">{state.book ? bookDisplayTitle(state.book, state.fileName) : state.fileName}</div>
           </div>
           <div className="tb-center">
-            <button
-              className="langlabel"
-              disabled={!isMulti}
-              title={isMulti ? 'Язык левой колонки' : undefined}
-              onClick={() => setLangSide('left')}
-            >
-              {shownLeft}
-            </button>
-            <button className="iconbtn" title="Поменять колонки" onClick={reader.toggleColumns}>
-              <IconSwap size={18} />
-            </button>
-            <button
-              className="langlabel"
-              disabled={!isMulti}
-              title={isMulti ? 'Язык правой колонки' : undefined}
-              onClick={() => setLangSide('right')}
-            >
-              {shownRight}
-            </button>
+            {expanded ? (
+              <button
+                className="langlabel"
+                disabled={!isMulti}
+                title={isMulti ? 'Язык развёрнутой колонки' : undefined}
+                onClick={() => setLangCol(expandedCol)}
+              >
+                {expandedLang}
+              </button>
+            ) : three ? state.colLangs.map((lang, i) => (
+              <button
+                key={i}
+                className="langlabel"
+                title={`Язык колонки ${i + 1}`}
+                onClick={() => setLangCol(i)}
+              >
+                {lang}
+              </button>
+            )) : (
+              <>
+                <button
+                  className="langlabel"
+                  disabled={!isMulti}
+                  title={isMulti ? 'Язык левой колонки' : undefined}
+                  onClick={() => setLangCol(0)}
+                >
+                  {shownLeft}
+                </button>
+                <button className="iconbtn" title="Поменять колонки" onClick={reader.toggleColumns}>
+                  <IconSwap size={18} />
+                </button>
+                <button
+                  className="langlabel"
+                  disabled={!isMulti}
+                  title={isMulti ? 'Язык правой колонки' : undefined}
+                  onClick={() => setLangCol(1)}
+                >
+                  {shownRight}
+                </button>
+              </>
+            )}
           </div>
           <div className="tb-side tb-right">
+            {canThree && !expanded && (
+              <button
+                className="iconbtn"
+                style={{ width: 'auto', minWidth: 34, padding: '0 6px', fontSize: 12, fontWeight: 700 }}
+                title="Число колонок: две или три"
+                onClick={() => void reader.toggleCols()}
+              >
+                <span style={{ color: three ? undefined : 'var(--accent)' }}>2</span>/
+                <span style={{ color: three ? 'var(--accent)' : undefined }}>3</span>
+              </button>
+            )}
             <button
               className="iconbtn"
               style={{ width: 'auto', minWidth: 34, padding: '0 6px', fontSize: 12, fontWeight: 700, gap: 3 }}
               title="Язык озвучки (нажмите, чтобы переключить)"
-              onClick={() => void reader.setTtsSide(state.ttsSide === 'tgt' ? 'src' : 'tgt')}
+              onClick={() => three ? reader.cycleTtsCol() : void reader.setTtsSide(state.ttsSide === 'tgt' ? 'src' : 'tgt')}
             >
               <IconSpeaker size={14} />
-              {(state.ttsSide === 'tgt' ? state.langTgt : state.langSrc).toUpperCase()}
+              {(three ? (state.colLangs[state.ttsCol] ?? '') : (state.ttsSide === 'tgt' ? state.langTgt : state.langSrc)).toUpperCase()}
             </button>
             <button className="iconbtn" title="Тема" onClick={reader.toggleTheme}>
               {state.dark ? <IconMoon size={18} /> : <IconSun size={18} />}
@@ -94,6 +137,11 @@ export default function ReaderScreen() {
             <button className="btn primary" style={{ flex: 1, margin: 8, fontSize: 16 }} onClick={() => reader.expandColumn('SRC')}>
               ← Левая колонка
             </button>
+            {three && (
+              <button className="btn primary" style={{ flex: 1, margin: 8, fontSize: 16 }} onClick={() => reader.expandColumn('MID')}>
+                Средняя колонка
+              </button>
+            )}
             <button className="btn primary" style={{ flex: 1, margin: 8, fontSize: 16 }} onClick={() => reader.expandColumn('TGT')}>
               Правая колонка →
             </button>
@@ -129,7 +177,7 @@ export default function ReaderScreen() {
       )}
 
       {showSidebar && <ChapterSidebar onClose={() => setShowSidebar(false)} />}
-      {langSide && isMulti && <LanguageSelector side={langSide} onClose={() => setLangSide(null)} />}
+      {langCol !== null && isMulti && <LanguageSelector col={langCol} onClose={() => setLangCol(null)} />}
       {state.error && <div className="snackbar" onClick={dismissError}>{state.error}</div>}
     </div>
   )

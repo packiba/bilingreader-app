@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Book, RenderRow } from '../types'
 import { preferredTitle } from '../types'
-import { buildRenderRows, computeChapterStarts, parseBook, withLanguages } from '../parser/bookParser'
+import { buildRenderRows, buildRenderRows3, computeChapterStarts, computeChapterStarts3, parseBook, withLanguages } from '../parser/bookParser'
 import * as db from './db'
 import type { StoredBook } from './db'
 import { loadSettings, saveSettings } from './settings'
@@ -34,6 +34,11 @@ export interface ReaderState {
   langSrc: string
   langTgt: string
   ttsSide: 'src' | 'tgt'
+  // Number of columns shown (3 only for multilingual books), the language of each
+  // of the three columns, and the column that is read aloud in that mode.
+  cols: 2 | 3
+  colLangs: string[]
+  ttsCol: number
   scrollRequest: { index: number; token: number; isSlow: boolean } | null
 }
 
@@ -100,6 +105,9 @@ const initialState: ReaderState = {
   langSrc: DEFAULT_LANG_SRC,
   langTgt: DEFAULT_LANG_TGT,
   ttsSide: 'tgt',
+  cols: 2,
+  colLangs: [],
+  ttsCol: 0,
   scrollRequest: null
 }
 
@@ -109,9 +117,11 @@ type Action =
   | { type: 'SET_IMPORTING'; v: boolean }
   | { type: 'SET_ERROR'; message: string | null }
   | { type: 'SCREEN'; screen: 'reader' | 'library' }
-  | { type: 'OPENED'; book: Book; bookId: string; fileName: string; progress: db.BookProgress; langSrc: string; langTgt: string; ttsSide: 'src' | 'tgt' }
+  | { type: 'OPENED'; book: Book; bookId: string; fileName: string; progress: db.BookProgress; langSrc: string; langTgt: string; ttsSide: 'src' | 'tgt'; cols: 2 | 3; colLangs: string[]; ttsCol: number }
   | { type: 'TTS_SIDE'; side: 'src' | 'tgt' }
   | { type: 'LANGS'; book: Book }
+  | { type: 'COLS'; cols: 2 | 3; colLangs: string[]; book: Book }
+  | { type: 'TTS_COL'; col: number }
   | { type: 'CLOSED' }
   | { type: 'SCROLL'; index: number; isSlow: boolean }
   | { type: 'USER_SCROLLED'; index: number }
@@ -142,6 +152,10 @@ function reducer(s: ReaderState, a: Action): ReaderState {
         langSrc: a.langSrc,
         langTgt: a.langTgt,
         ttsSide: a.ttsSide,
+        cols: a.cols,
+        colLangs: a.colLangs,
+        ttsCol: a.ttsCol,
+        expandMode: a.cols === 2 && s.expandMode === 'MID' ? 'NONE' : s.expandMode,
         currentPair: restore,
         readThrough: a.progress.readThrough,
         readExceptions: a.progress.readExceptions,
@@ -196,6 +210,20 @@ function reducer(s: ReaderState, a: Action): ReaderState {
     case 'TTS_SIDE': return { ...s, ttsSide: a.side, speakingPair: null, isContinuousReading: false }
     case 'LANGS':
       return { ...s, book: a.book, langSrc: a.book.langSrc, langTgt: a.book.langTgt, speakingPair: null, isContinuousReading: false }
+    case 'COLS':
+      return {
+        ...s,
+        cols: a.cols,
+        colLangs: a.colLangs,
+        book: a.book,
+        langSrc: a.book.langSrc,
+        langTgt: a.book.langTgt,
+        ttsCol: Math.min(s.ttsCol, a.cols - 1),
+        speakingPair: null,
+        isContinuousReading: false,
+        expandMode: s.expandMode === 'AWAITING' || (a.cols === 2 && s.expandMode === 'MID') ? 'NONE' : s.expandMode
+      }
+    case 'TTS_COL': return { ...s, ttsCol: a.col, speakingPair: null, isContinuousReading: false }
   }
 }
 
@@ -263,7 +291,7 @@ interface ReaderContextValue {
   toggleTheme: () => void
   toggleColumns: () => void
   toggleExpandMode: () => void
-  expandColumn: (mode: 'SRC' | 'TGT') => void
+  expandColumn: (mode: 'SRC' | 'MID' | 'TGT') => void
   setFontSize: (n: number) => void
   toggleSpeak: (index: number) => void
   startContinuousReading: (index: number) => void
@@ -271,6 +299,9 @@ interface ReaderContextValue {
   translateWordAction: (word: string, from: string, to: string) => Promise<string>
   setTtsSide: (side: 'src' | 'tgt') => Promise<void>
   setLanguages: (left: string, right: string) => Promise<void>
+  toggleCols: () => Promise<void>
+  setColumnLanguage: (index: number, lang: string) => Promise<void>
+  cycleTtsCol: () => void
   dismissError: () => void
   wordPopup: WordPopupState | null
   showWordPopup: (index: number, word: string, from: string, to: string, x: number, y: number) => void
@@ -296,6 +327,7 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
   // fallback for the persistence snapshot.
   const latestPositionRef = useRef<{ bookId: string; index: number } | null>(null)
   const ttsRef = useRef<TtsController | null>(null)
+  const rowsRef = useRef<RenderRow[]>([])
   // Lives outside the reducer: purely transient UI state, not persisted, and
   // deliberately a single shared slot (not per-row local state) so opening a
   // translation on one word always replaces whatever popup was already open
@@ -358,6 +390,10 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
   // The text and language that get read aloud for a pair: the book's `tgt`
   // or `src` side, whichever the user chose — independent of column order.
   const speakTarget = (s: ReaderState, index: number): { text: string; lang: string } | null => {
+    if (s.cols === 3) {
+      const c = rowsRef.current[index]?.cells?.[s.ttsCol]
+      return c ? { text: c.text, lang: c.lang } : null
+    }
     const p = s.book?.pairs[index]
     if (!p) return null
     return s.ttsSide === 'tgt' ? { text: p.tgt, lang: s.langTgt } : { text: p.src, lang: s.langSrc }
@@ -449,6 +485,15 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
           && langs.includes(stored.langSrc) && langs.includes(stored.langTgt)) {
         book = withLanguages(book, stored.langSrc, stored.langTgt)
       }
+      // ... and in the three-column mode with the languages chosen last time.
+      let cols: 2 | 3 = 2
+      let colLangs: string[] = []
+      if (langs && langs.length >= 3 && stored.cols === 3 && stored.colLangs?.length === 3
+          && new Set(stored.colLangs).size === 3 && stored.colLangs.every((l) => langs.includes(l))) {
+        cols = 3
+        colLangs = stored.colLangs
+        book = withLanguages(book, colLangs[0], colLangs[1])
+      }
       const stored_p = await db.getProgress(id).catch(() => undefined)
       const mirror = readMirror(id)
       const newestProgress = mirror && (mirror.updatedAt ?? 0) >= (stored_p?.updatedAt ?? 0) ? mirror : stored_p
@@ -470,7 +515,10 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
         // The language pair is a property of the book itself (BLB metadata).
         langSrc: book.langSrc,
         langTgt: book.langTgt,
-        ttsSide: stored.ttsSide ?? 'tgt'
+        ttsSide: stored.ttsSide ?? 'tgt',
+        cols,
+        colLangs,
+        ttsCol: Math.min(Math.max(stored.ttsCol ?? 0, 0), cols - 1)
       })
     } catch (e) {
       if (seq !== openSeq.current) return
@@ -561,15 +609,20 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     if (stateRef.current.book) dispatch({ type: 'SCREEN', screen: 'reader' })
   }, [])
 
-  const chapterStarts = useMemo(
-    () => (state.book ? computeChapterStarts(state.book, state.columnsSwapped) : []),
-    [state.book, state.columnsSwapped]
-  )
+  const chapterStarts = useMemo(() => {
+    if (!state.book) return []
+    return state.cols === 3
+      ? computeChapterStarts3(state.book, state.colLangs)
+      : computeChapterStarts(state.book, state.columnsSwapped)
+  }, [state.book, state.columnsSwapped, state.cols, state.colLangs])
 
-  const rows = useMemo(
-    () => (state.book ? buildRenderRows(state.book, state.columnsSwapped, state.langSrc, state.langTgt) : []),
-    [state.book, state.columnsSwapped, state.langSrc, state.langTgt]
-  )
+  const rows = useMemo(() => {
+    if (!state.book) return []
+    return state.cols === 3
+      ? buildRenderRows3(state.book, state.colLangs)
+      : buildRenderRows(state.book, state.columnsSwapped, state.langSrc, state.langTgt)
+  }, [state.book, state.columnsSwapped, state.langSrc, state.langTgt, state.cols, state.colLangs])
+  rowsRef.current = rows
 
   const markAsReadAndNext = useCallback((index: number) => {
     const s = stateRef.current
@@ -656,7 +709,7 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     if (next === 'NONE') saveSettings({ ...loadSettings(), expandMode: 'NONE' })
   }, [])
 
-  const expandColumn = useCallback((mode: Extract<ExpandMode, 'SRC' | 'TGT'>) => {
+  const expandColumn = useCallback((mode: Extract<ExpandMode, 'SRC' | 'MID' | 'TGT'>) => {
     dispatch({ type: 'EXPAND', mode })
     saveSettings({ ...loadSettings(), expandMode: mode })
   }, [])
@@ -726,6 +779,71 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     }
   }, [closeWordPopup])
 
+  // Saves a change of the view (columns, languages, audio column) with the book.
+  const persistView = useCallback(async (patch: Partial<db.StoredBook>) => {
+    const id = stateRef.current.bookId
+    if (!id) return
+    try {
+      const stored = await db.getBook(id)
+      if (stored) await db.putBook({ ...stored, ...patch })
+      const books = await db.getBooks().catch(() => null)
+      if (books) dispatch({ type: 'SET_BOOKS', books })
+    } catch {
+      /* best-effort; the in-memory choice still applies */
+    }
+  }, [])
+
+  // Two <-> three columns (multilingual books with at least three languages).
+  const toggleCols = useCallback(async () => {
+    const s = stateRef.current
+    const langs = s.book?.multi?.languages
+    if (!s.book || !langs || langs.length < 3) return
+    ttsRef.current?.stop()
+    closeWordPopup()
+    if (s.cols === 2) {
+      const left = s.columnsSwapped ? s.langTgt : s.langSrc
+      const right = s.columnsSwapped ? s.langSrc : s.langTgt
+      const third = langs.find((l) => l !== left && l !== right) ?? langs[0]
+      const colLangs = [left, right, third]
+      dispatch({ type: 'COLS', cols: 3, colLangs, book: withLanguages(s.book, left, right) })
+      void persistView({ cols: 3, colLangs, langSrc: left, langTgt: right })
+    } else {
+      const [left, right] = s.colLangs
+      dispatch({ type: 'COLS', cols: 2, colLangs: [], book: withLanguages(s.book, left, right) })
+      if (s.columnsSwapped) {
+        dispatch({ type: 'COLUMNS', swapped: false })
+        saveSettings({ ...loadSettings(), columnsSwapped: false })
+      }
+      void persistView({ cols: 2, colLangs: [], langSrc: left, langTgt: right })
+    }
+  }, [closeWordPopup, persistView])
+
+  // Language of one of the three columns; choosing a language that another
+  // column shows swaps the two, so no language is ever shown twice.
+  const setColumnLanguage = useCallback(async (index: number, lang: string) => {
+    const s = stateRef.current
+    const langs = s.book?.multi?.languages
+    if (!s.book || !langs || s.cols !== 3 || !langs.includes(lang) || s.colLangs[index] === lang) return
+    const colLangs = [...s.colLangs]
+    const at = colLangs.indexOf(lang)
+    if (at >= 0) colLangs[at] = colLangs[index]
+    colLangs[index] = lang
+    ttsRef.current?.stop()
+    closeWordPopup()
+    dispatch({ type: 'COLS', cols: 3, colLangs, book: withLanguages(s.book, colLangs[0], colLangs[1]) })
+    void persistView({ cols: 3, colLangs, langSrc: colLangs[0], langTgt: colLangs[1] })
+  }, [closeWordPopup, persistView])
+
+  // Three columns: the audio language moves on to the next column, round and round.
+  const cycleTtsCol = useCallback(() => {
+    const s = stateRef.current
+    if (s.cols !== 3) return
+    ttsRef.current?.stop()
+    const col = (s.ttsCol + 1) % 3
+    dispatch({ type: 'TTS_COL', col })
+    void persistView({ ttsCol: col })
+  }, [persistView])
+
   const stopSpeaking = useCallback(() => {
     ttsRef.current?.stop()
     dispatch({ type: 'SPEAK', index: null, continuous: false })
@@ -763,7 +881,7 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     markAsReadAndNext, markAsUnread, onUserScrolled, rememberScrollPosition, setCurrentPair,
     goToPrevChapter, goToNextChapter,
     toggleTheme, toggleColumns, toggleExpandMode, expandColumn, setFontSize,
-    toggleSpeak, startContinuousReading, stopSpeaking, translateWordAction, setTtsSide, setLanguages, dismissError,
+    toggleSpeak, startContinuousReading, stopSpeaking, translateWordAction, setTtsSide, setLanguages, toggleCols, setColumnLanguage, cycleTtsCol, dismissError,
     wordPopup, showWordPopup, closeWordPopup
   }
 

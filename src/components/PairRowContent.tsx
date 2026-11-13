@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import type { RenderRow } from '../types'
 import type { ExpandMode } from '../store/settings'
 import ChapterHeader from './ChapterHeader'
@@ -41,7 +42,45 @@ export default function PairRowContent({
       <div className={`textbook rowtext${DIALOGUE_RE.test(row.tgtText) ? ' dlg' : ''}`} style={{ fontSize, color: textColor }}>{row.tgtText}</div>
     </div>
   )
-  const expand = expandMode as 'SRC' | 'TGT' | 'NONE' | 'AWAITING'
+  const expand = expandMode as ExpandMode | 'AWAITING'
+  if (row.cells) {
+    // Three-column mode: smaller text, unless one column takes the whole width.
+    const cells = row.cells
+    const only = expand === 'SRC' ? 0 : expand === 'MID' ? 1 : expand === 'TGT' ? cells.length - 1 : -1
+    const fs = only >= 0 ? fontSize : Math.round(fontSize * 0.85)
+    const column = (i: number) => (
+      <div
+        className={`col ${i === 0 ? 'left' : i === cells.length - 1 ? 'right' : 'mid'}`}
+        lang={cells[i].lang} data-lang={cells[i].lang} data-other={cells[i].other}
+      >
+        <div className={`textbook rowtext${DIALOGUE_RE.test(cells[i].text) ? ' dlg' : ''}`} style={{ fontSize: fs, color: textColor }}>{cells[i].text}</div>
+      </div>
+    )
+    const content = only >= 0
+      ? <div className="cell expanded">{column(only)}</div>
+      : (
+        <div className="cell">
+          {cells.map((_, i) => (
+            <Fragment key={i}>{i > 0 && <div className="dividerC" />}{column(i)}</Fragment>
+          ))}
+        </div>
+      )
+    return (
+      <>
+        {row.showHeader && row.headerCells && (
+          <ChapterHeader
+            titleSrc="" titleTgt="" langLeft={row.langLeft} langRight={row.langRight}
+            fontSize={fs} dark={dark} expand={expand}
+            cols={cells.map((c, i) => ({ title: row.headerCells![i] ?? '', lang: c.lang, other: c.other }))}
+          />
+        )}
+        <div style={{ position: 'relative', paddingTop: 0 }}>
+          <div style={{ transform: `translateX(${dx}px)` }}>{content}</div>
+          <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 0 }}>{speaker}</div>
+        </div>
+      </>
+    )
+  }
   const cellContent =
     expand === 'SRC' ? <div className="cell expanded">{srcCol}</div> :
     expand === 'TGT' ? <div className="cell expanded">{tgtCol}</div> : (

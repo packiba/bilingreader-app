@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Chapter } from '../types'
 import { displayTitleSrc, displayTitleTgt } from '../types'
 import { useReader } from '../store/ReaderProvider'
+import { columnTitle } from '../parser/bookParser'
 import { IconMenu } from './icons'
 
 export default function ChapterSidebar({ onClose }: { onClose: () => void }) {
@@ -11,13 +12,22 @@ export default function ChapterSidebar({ onClose }: { onClose: () => void }) {
   const items = useMemo(() => {
     if (!book) return []
     let acc = 0
+    if (state.cols === 3 && book.multi) {
+      // Three columns: the first non-empty heading among the shown languages.
+      return book.multi.chapters.map((c) => {
+        const start = acc
+        acc += c.rows.length
+        const title = state.colLangs.map((l) => columnTitle(c.titles, l, state.colLangs)).find((t) => t !== '') ?? ''
+        return { title: title || '—', start }
+      }).filter((it) => it.title !== '—')
+    }
     return book.chapters.map((ch: Chapter) => {
       const title = state.columnsSwapped ? displayTitleTgt(ch) : displayTitleSrc(ch)
       const start = acc
       acc += ch.pairs.length
       return { title, start }
     }).filter((it) => it.title !== '—')
-  }, [book, state.columnsSwapped])
+  }, [book, state.columnsSwapped, state.cols, state.colLangs])
 
   const query = search.trim().toLowerCase()
   const list = query ? items.filter((it) => it.title.toLowerCase().includes(query)) : items

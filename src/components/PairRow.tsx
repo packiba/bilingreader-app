@@ -226,7 +226,7 @@ function PairRow({ rows, index }: { rows: RenderRow[]; index: number }) {
     reader.toggleSpeak(index)
   }
 
-  const expand = reader.expandMode as 'SRC' | 'TGT' | 'NONE' | 'AWAITING'
+  const expand = reader.expandMode
 
   return (
     <div

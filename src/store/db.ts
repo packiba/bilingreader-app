@@ -121,6 +121,11 @@ export interface StoredBook {
   langTgt?: string
   // Every language of the book (more than two for a multilingual book).
   langs?: string[]
+  // Three-column view of a multilingual book: the mode, the language of each of
+  // the three columns and the column read aloud.
+  cols?: 2 | 3
+  colLangs?: string[]
+  ttsCol?: number
   ttsSide?: 'src' | 'tgt'
 }
 

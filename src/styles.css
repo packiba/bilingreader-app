@@ -72,12 +72,13 @@ body {
 .cell .col, .chapterhead .col { flex: 1; min-width: 0; padding: 4px 14px; }
 .cell .col.left, .chapterhead .col.left { padding-left: 14px; padding-right: 6px; }
 .cell .col.right, .chapterhead .col.right { padding-left: 6px; padding-right: 34px; }
+.cell .col.mid, .chapterhead .col.mid { padding-left: 6px; padding-right: 6px; }
 .cell .dividerC, .chapterhead .dividerC { width: 0.5px; background: var(--row-divider); flex: none; }
 .rowwrap { border-bottom: 0.5px solid var(--divider); background: var(--zebra1); position: relative; }
 .rowwrap.zebra { background: var(--zebra2); }
 .rowtext { font-size: 15px; line-height: 1.45; }
-.cell.expanded .col.left, .cell.expanded .col.right { padding: 6px 34px 6px 18px; }
-.chapterhead.expanded .col.left, .chapterhead.expanded .col.right { padding: 4px 34px 4px 18px; }
+.cell.expanded .col.left, .cell.expanded .col.mid, .cell.expanded .col.right { padding: 6px 34px 6px 18px; }
+.chapterhead.expanded .col.left, .chapterhead.expanded .col.mid, .chapterhead.expanded .col.right { padding: 4px 34px 4px 18px; }
 .cell.expanded .rowtext { line-height: 1.67; }
 .rowtext.dlg {}
 .dimmed .rowtext { color: var(--text-dimmed); }

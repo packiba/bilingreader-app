@@ -188,12 +188,45 @@ function finalizeBook(partial: { roots: BookNode[]; chapters: Chapter[] }): Book
 // the full data and this builds the view for the chosen pair. Rows are never
 // dropped (a language may lack a row), so pair indices — and therefore reading
 // progress — stay the same whichever languages are selected.
+const ROMAN = /^M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$/
+// Cyrillic look-alikes that book titles sometimes use inside roman numerals (ХII).
+const CYR_ROMAN: Record<string, string> = { 'Х': 'X', 'І': 'I', 'С': 'C', 'М': 'M' }
+
+// The chapter number inside a title ("CHAPITRE II" -> "II", "Глава 5" -> "5"),
+// or null when the title has none ("Пролог", "PREMIER CHAPITRE").
+const CHAPTER_WORD = /^(?:глава|chapter|chapitre|cap[ií]tulo|capitolo|kapitel|част|часть|part|partie|parte|book|книга)\s+/iu
+
+// The number must open the title or follow a word like "Chapter": a number in the
+// middle ("Париж 22:46") is not a chapter number.
+export function chapterNumberOf(title: string): string | null {
+  let rest = title.trim().replace(/^[^\p{L}\d]+/u, '')
+  rest = rest.replace(CHAPTER_WORD, '')
+  const m = /^(\d{1,4}|[IVXLCDMХІСМ]{1,8})(?![\p{L}\d])/u.exec(rest)
+  if (!m) return null
+  if (/^\d+$/.test(m[1])) return m[1]
+  const t = [...m[1]].map((ch) => CYR_ROMAN[ch] ?? ch).join('')
+  return ROMAN.test(t) ? t : null
+}
+
+// The heading shown over a column: the chapter title in that column's own
+// language; without one, only the chapter number taken from another displayed
+// column; with no number anywhere the heading stays empty.
+export function columnTitle(titles: Record<string, string>, lang: string, shown: string[]): string {
+  const own = (titles[lang] ?? '').trim()
+  if (own) return own
+  for (const other of shown) {
+    if (other === lang) continue
+    const n = chapterNumberOf(titles[other] ?? '')
+    if (n) return n
+  }
+  return ''
+}
+
 export function withLanguages(book: Book, left: string, right: string): Book {
   const multi = book.multi
   if (!multi) return book
-  const first = multi.languages[0]
   const title = (titles: Record<string, string>, lang: string): string | null =>
-    (titles[lang] ?? titles[first] ?? '').trim() || null
+    columnTitle(titles, lang, [left, right]) || null
   const chapters: Chapter[] = multi.chapters.map((c, i) => ({
     pairNum: i + 1,
     titleSrc: title(c.titles, left),
@@ -314,4 +347,55 @@ export function buildRenderRows(book: Book, columnsSwapped: boolean, langSrc: st
     }
   }
   return rows
+}
+
+// Three-column mode (multilingual books only): rows of the book with the text of
+// the three shown languages. A tapped word is translated into the language of the
+// column on its left (the first column translates into the second).
+export function buildRenderRows3(book: Book, colLangs: string[]): RenderRow[] {
+  const multi = book.multi
+  if (!multi) return []
+  const rows: RenderRow[] = []
+  let globalIdx = 0
+  let lastKey = ''
+  for (const chapter of multi.chapters) {
+    const headerCells = colLangs.map((l) => columnTitle(chapter.titles, l, colLangs))
+    const key = headerCells.join('|')
+    const showHeader = headerCells.some((t) => t !== '') && key !== lastKey
+    if (showHeader) lastKey = key
+    for (let i = 0; i < chapter.rows.length; i++) {
+      const r = chapter.rows[i]
+      const cells = colLangs.map((l, c) => ({
+        text: r[l] ?? '',
+        lang: l,
+        other: colLangs[c === 0 ? 1 : c - 1]
+      }))
+      rows.push({
+        idx: globalIdx,
+        showHeader: showHeader && i === 0,
+        headerTitleSrc: headerCells[0],
+        headerTitleTgt: headerCells[colLangs.length - 1],
+        srcText: cells[0].text,
+        tgtText: cells[colLangs.length - 1].text,
+        langLeft: colLangs[0],
+        langRight: colLangs[colLangs.length - 1],
+        parStart: false,
+        cells,
+        headerCells
+      })
+      globalIdx++
+    }
+  }
+  return rows
+}
+
+export function computeChapterStarts3(book: Book, colLangs: string[]): number[] {
+  const starts: number[] = []
+  let acc = 0
+  for (const chapter of book.multi?.chapters ?? []) {
+    const hasTitle = colLangs.some((l) => columnTitle(chapter.titles, l, colLangs) !== '')
+    if (hasTitle && starts[starts.length - 1] !== acc) starts.push(acc)
+    acc += chapter.rows.length
+  }
+  return starts.filter((s) => s < book.totalPairs)
 }

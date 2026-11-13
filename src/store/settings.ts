@@ -1,4 +1,5 @@
-export type ExpandMode = 'NONE' | 'AWAITING' | 'SRC' | 'TGT'
+// SRC / MID / TGT: the left, middle and right column (MID exists only with three columns).
+export type ExpandMode = 'NONE' | 'AWAITING' | 'SRC' | 'MID' | 'TGT'
 
 export interface DisplaySettings {
   dark: boolean
@@ -18,7 +19,7 @@ export function loadSettings(): DisplaySettings {
     if (!v || typeof v !== 'object') return { ...DEFAULTS }
     // Validate every field: a corrupted value (e.g. fontSize "abc") used to
     // render the whole book with font-size NaN.
-    const expandModes: ExpandMode[] = ['NONE', 'SRC', 'TGT']
+    const expandModes: ExpandMode[] = ['NONE', 'SRC', 'MID', 'TGT']
     return {
       dark: typeof v.dark === 'boolean' ? v.dark : DEFAULTS.dark,
       fontSize: typeof v.fontSize === 'number' && Number.isFinite(v.fontSize)
