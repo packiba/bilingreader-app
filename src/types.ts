@@ -7,6 +7,11 @@ export interface AlignedPair {
   tgtPar?: boolean
 }
 
+// Multilingual pair (BLB v2 format)
+export interface MultilingualPair {
+  [lang: string]: string
+}
+
 export interface Chapter {
   pairNum: number
   titleSrc: string | null
@@ -77,6 +82,11 @@ export interface Book {
   langTgt: string
   // true when the book file itself declared both languages.
   langsFromFile: boolean
+  // Multilingual support (BLB v2)
+  isMultilingual?: boolean
+  availableLanguages?: string[]
+  selectedLangLeft?: string
+  selectedLangRight?: string
 }
 
 export function bookDisplayTitle(book: Book, fallback = ''): string {
