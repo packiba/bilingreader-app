@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
-  base: '/bilingreader-app/',
+  base: process.env.VITE_BASE || '/bilingreader-app/',
   define: {
     __BUILD_TAG__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ') + ' UTC — v0.3 langs')
   },
@@ -17,8 +17,8 @@ export default defineConfig({
         name: 'Biling Reader',
         short_name: 'BilingReader',
         description: 'Чтение параллельных текстов на любой паре языков',
-        start_url: '/bilingreader-app/',
-        scope: '/bilingreader-app/',
+        start_url: (process.env.VITE_BASE || '/bilingreader-app/').replace(/\/$/, '') + '/',
+        scope: process.env.VITE_BASE || '/bilingreader-app/',
         display: 'standalone',
         orientation: 'landscape',
         theme_color: '#1A1E24',
@@ -31,7 +31,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,webmanifest}'],
-        navigateFallback: '/bilingreader-app/index.html'
+        navigateFallback: (process.env.VITE_BASE || '/bilingreader-app/') + 'index.html'
       }
     })
   ]
