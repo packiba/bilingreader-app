@@ -52,9 +52,9 @@ body {
 .lib[data-drag] { outline: 3px dashed var(--accent); outline-offset: -3px; }
 .lib[data-drag] .card { opacity: 0.6; }
 .lib h1 { font-size: 20px; margin: 0 0 16px; }
-.lib .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; }
-.card { position: relative; background: var(--zebra2); border: 1px solid var(--divider); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
-.card .title { font-weight: 600; font-size: 17px; word-break: break-word; }
+.lib .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 340px)); gap: 12px; }
+.card { min-height: 195px; position: relative; background: var(--zebra2); border: 1px solid var(--divider); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.card .title { font-weight: 600; font-size: 17px; word-break: break-word; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
 .card .meta { font-size: 13px; opacity: 0.7; }
 .card .delete { padding: 3px 12px; font-size: 12px; flex: none; }
 .card.book { flex-direction: row; align-items: stretch; gap: 16px; padding: 15px; }
