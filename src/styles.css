@@ -30,7 +30,7 @@ body {
 .toolbar .tb-side { flex: 1 1 0; min-width: 0; display: flex; align-items: center; gap: 2px; }
 .toolbar .tb-right { justify-content: flex-end; }
 .toolbar .tb-center { flex: none; display: flex; align-items: center; gap: 2px; }
-.langlabel { height: 34px; padding: 0 8px; border: none; background: transparent; color: var(--text-active); opacity: 0.5; font-size: 15px; border-radius: 8px; touch-action: manipulation; }
+.langlabel { height: 34px; padding: 0 8px; border: none; background: transparent; color: var(--text-active); font-size: 15px; border-radius: 8px; touch-action: manipulation; }
 .langlabel:not(:disabled):active { background: rgba(128, 128, 128, 0.18); }
 .iconbtn {
   display: inline-flex; align-items: center; justify-content: center;
@@ -52,13 +52,13 @@ body {
 .lib[data-drag] { outline: 3px dashed var(--accent); outline-offset: -3px; }
 .lib[data-drag] .card { opacity: 0.6; }
 .lib h1 { font-size: 20px; margin: 0 0 16px; }
-.lib .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.lib .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; }
 .card { position: relative; background: var(--zebra2); border: 1px solid var(--divider); border-radius: 10px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
-.card .title { font-weight: 600; font-size: 15px; word-break: break-word; }
-.card .meta { font-size: 12px; opacity: 0.7; }
-.card .delete { padding: 2px 8px; font-size: 11px; flex: none; }
-.card.book { flex-direction: row; align-items: stretch; gap: 12px; padding: 10px; }
-.card .cover-wrap { flex: none; width: 73px; align-self: flex-start; border-radius: 6px; overflow: hidden; background: var(--divider); }
+.card .title { font-weight: 600; font-size: 17px; word-break: break-word; }
+.card .meta { font-size: 13px; opacity: 0.7; }
+.card .delete { padding: 3px 12px; font-size: 12px; flex: none; }
+.card.book { flex-direction: row; align-items: stretch; gap: 16px; padding: 15px; }
+.card .cover-wrap { flex: none; width: 110px; align-self: flex-start; border-radius: 6px; overflow: hidden; background: var(--divider); }
 .card .bookinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .card .bookfoot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding-top: 6px; }
 .card .cover { display: block; width: 100%; aspect-ratio: 2 / 3; object-fit: cover; }
