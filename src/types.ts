@@ -7,11 +7,6 @@ export interface AlignedPair {
   tgtPar?: boolean
 }
 
-// Multilingual pair (BLB v2 format)
-export interface MultilingualPair {
-  [lang: string]: string
-}
-
 export interface Chapter {
   pairNum: number
   titleSrc: string | null
@@ -82,11 +77,20 @@ export interface Book {
   langTgt: string
   // true when the book file itself declared both languages.
   langsFromFile: boolean
-  // Multilingual support (BLB v2)
-  isMultilingual?: boolean
-  availableLanguages?: string[]
-  selectedLangLeft?: string
-  selectedLangRight?: string
+  // Set for multilingual books (BLB v2): the texts of every language. `chapters`
+  // and `pairs` above are just the view for the currently chosen language pair
+  // (see withLanguages in bookParser.ts).
+  multi?: MultiData
+}
+
+export interface MultiChapter {
+  titles: Record<string, string>
+  rows: Array<Record<string, string>>
+}
+
+export interface MultiData {
+  languages: string[]
+  chapters: MultiChapter[]
 }
 
 export function bookDisplayTitle(book: Book, fallback = ''): string {

@@ -83,8 +83,8 @@ export default function ReaderList() {
   // incremental correction mid-scroll — the scroll position never shifts
   // under the user afterwards.
   const measureKey = useMemo(
-    () => `${state.bookId}|${Math.round(size.width)}|${state.fontSize}|${state.columnsSwapped}|${state.expandMode}`,
-    [state.bookId, size.width, state.fontSize, state.columnsSwapped, state.expandMode]
+    () => `${state.bookId}|${Math.round(size.width)}|${state.fontSize}|${state.columnsSwapped}|${state.expandMode}|${state.langSrc}|${state.langTgt}`,
+    [state.bookId, size.width, state.fontSize, state.columnsSwapped, state.expandMode, state.langSrc, state.langTgt]
   )
   const measureKeyRef = useRef(measureKey)
   measureKeyRef.current = measureKey

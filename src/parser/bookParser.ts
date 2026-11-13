@@ -183,72 +183,65 @@ function finalizeBook(partial: { roots: BookNode[]; chapters: Chapter[] }): Book
   }
 }
 
-// Parse multilingual BLB v2 format
+// A multilingual BLB (v2) keeps one row per fragment of the book with the text
+// in every language. The reader shows two of them side by side; `multi` holds
+// the full data and this builds the view for the chosen pair. Rows are never
+// dropped (a language may lack a row), so pair indices — and therefore reading
+// progress — stay the same whichever languages are selected.
+export function withLanguages(book: Book, left: string, right: string): Book {
+  const multi = book.multi
+  if (!multi) return book
+  const first = multi.languages[0]
+  const title = (titles: Record<string, string>, lang: string): string | null =>
+    (titles[lang] ?? titles[first] ?? '').trim() || null
+  const chapters: Chapter[] = multi.chapters.map((c, i) => ({
+    pairNum: i + 1,
+    titleSrc: title(c.titles, left),
+    titleTgt: title(c.titles, right),
+    pairs: c.rows.map((r) => ({ src: r[left] ?? '', tgt: r[right] ?? '' })),
+    pathSrc: [],
+    pathTgt: []
+  }))
+  return { ...book, chapters, pairs: chapters.flatMap((c) => c.pairs), langSrc: left, langTgt: right }
+}
+
 function parseMultilingualBlb(root: Record<string, unknown>): Book {
-  const blbVersion = root['blb_version']
-  const format = root['format']
+  const bookObj = isObj(root['book']) ? root['book'] : {}
+  const codes = stringArray(bookObj['languages']).map((l) => normalizeLang(l) ?? l)
+  const languages = [...new Set(codes)]
+  if (languages.length < 2) throw new Error('В многоязычной книге должно быть минимум два языка')
 
-  if (blbVersion !== 2 || format !== 'multilingual') {
-    throw new Error('Это не многоязычный BLB v2 файл')
-  }
+  const chapters = objArray(root['chapters']).map((ch) => {
+    const rows = objArray(ch['multilingual_pairs']).map((row) => {
+      const out: Record<string, string> = {}
+      for (const [k, v] of Object.entries(row)) if (typeof v === 'string') out[normalizeLang(k) ?? k] = v
+      return out
+    })
+    const titles: Record<string, string> = {}
+    const rawTitles = isObj(ch['titles']) ? ch['titles'] : {}
+    for (const [k, v] of Object.entries(rawTitles)) if (typeof v === 'string') titles[normalizeLang(k) ?? k] = v
+    const fallback = optString(ch, 'title')
+    if (fallback && !titles[languages[0]]) titles[languages[0]] = fallback
+    return { titles, rows }
+  }).filter((c) => c.rows.length > 0)
 
-  const chapters = objArray(root['chapters'])
-  if (chapters.length === 0) throw new Error('Файл не содержит глав')
+  const totalPairs = chapters.reduce((sum, c) => sum + c.rows.length, 0)
+  if (totalPairs === 0) throw new Error('В файле нет ни одной пары предложений')
 
-  // Extract available languages from book metadata
-  const bookMeta = root['book'] as Record<string, unknown> | null
-  const availableLanguages = stringArray(bookMeta?.['languages'] ?? [])
-
-  if (availableLanguages.length < 2) {
-    throw new Error('Многоязычный файл должен содержать как минимум 2 языка')
-  }
-
-  // Default to first two languages for initial display
-  const langSrc = normalizeLang(availableLanguages[0]) ?? 'ru'
-  const langTgt = normalizeLang(availableLanguages[1]) ?? 'en'
-
-  // Convert multilingual pairs to standard AlignedPair format
-  const convertedChapters: Chapter[] = chapters.map((chapterObj, idx) => {
-    const multilingualPairs = objArray(chapterObj['multilingual_pairs'] ?? [])
-
-    const pairs: AlignedPair[] = multilingualPairs.map((pair) => {
-      const pairObj = pair as Record<string, string>
-      const src = pairObj[langSrc] ?? ''
-      const tgt = pairObj[langTgt] ?? ''
-
-      return {
-        src: src || '',
-        tgt: tgt || '',
-        srcPar: undefined,
-        tgtPar: undefined
-      }
-    }).filter((p) => p.src !== '' || p.tgt !== '')
-
-    return {
-      pairNum: idx + 1,
-      titleSrc: optString(chapterObj, 'title'),
-      titleTgt: optString(chapterObj, 'title'),
-      pairs,
-      pathSrc: [],
-      pathTgt: []
-    }
-  })
-
-  const book = finalizeBook({ roots: [], chapters: convertedChapters })
-  const meta = parseBookMeta(bookMeta)
-
-  return {
-    ...book,
-    meta,
+  const title = optString(bookObj, 'title')
+  const base: Book = {
+    roots: [],
+    chapters: [],
+    totalPairs,
+    pairs: [],
+    meta: { titleSrc: title, titleTgt: title, author: optString(bookObj, 'author'), langSrc: languages[0], langTgt: languages[1] },
     cover: parseCover(root['cover']),
-    langSrc,
-    langTgt,
+    langSrc: languages[0],
+    langTgt: languages[1],
     langsFromFile: true,
-    isMultilingual: true,
-    availableLanguages,
-    selectedLangLeft: langSrc,
-    selectedLangRight: langTgt
+    multi: { languages, chapters }
   }
+  return withLanguages(base, languages[0], languages[1])
 }
 
 export function parseBook(jsonText: string): Book {

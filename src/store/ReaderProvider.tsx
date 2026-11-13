@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import type { Book, RenderRow } from '../types'
-import { buildRenderRows, computeChapterStarts, parseBook } from '../parser/bookParser'
+import { buildRenderRows, computeChapterStarts, parseBook, withLanguages } from '../parser/bookParser'
 import * as db from './db'
 import type { StoredBook } from './db'
 import { loadSettings, saveSettings } from './settings'
@@ -110,6 +110,7 @@ type Action =
   | { type: 'SCREEN'; screen: 'reader' | 'library' }
   | { type: 'OPENED'; book: Book; bookId: string; fileName: string; progress: db.BookProgress; langSrc: string; langTgt: string; ttsSide: 'src' | 'tgt' }
   | { type: 'TTS_SIDE'; side: 'src' | 'tgt' }
+  | { type: 'LANGS'; book: Book }
   | { type: 'CLOSED' }
   | { type: 'SCROLL'; index: number; isSlow: boolean }
   | { type: 'USER_SCROLLED'; index: number }
@@ -192,6 +193,8 @@ function reducer(s: ReaderState, a: Action): ReaderState {
     case 'EXPAND': return { ...s, expandMode: a.mode }
     case 'SPEAK': return { ...s, speakingPair: a.index, isContinuousReading: a.continuous }
     case 'TTS_SIDE': return { ...s, ttsSide: a.side, speakingPair: null, isContinuousReading: false }
+    case 'LANGS':
+      return { ...s, book: a.book, langSrc: a.book.langSrc, langTgt: a.book.langTgt, speakingPair: null, isContinuousReading: false }
   }
 }
 
@@ -266,6 +269,7 @@ interface ReaderContextValue {
   stopSpeaking: () => void
   translateWordAction: (word: string, from: string, to: string) => Promise<string>
   setTtsSide: (side: 'src' | 'tgt') => Promise<void>
+  setLanguages: (left: string, right: string) => Promise<void>
   dismissError: () => void
   wordPopup: WordPopupState | null
   showWordPopup: (index: number, word: string, from: string, to: string, x: number, y: number) => void
@@ -437,7 +441,13 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
       if (seq !== openSeq.current) return
       // Parsing a large book takes a noticeable moment; importFile already
       // did it, so don't do it twice.
-      const book = opts?.preparsed ?? parseBook(stored.rawJson)
+      let book = opts?.preparsed ?? parseBook(stored.rawJson)
+      // A multilingual book reopens with the language pair chosen last time.
+      const langs = book.multi?.languages
+      if (langs && stored.langSrc && stored.langTgt && stored.langSrc !== stored.langTgt
+          && langs.includes(stored.langSrc) && langs.includes(stored.langTgt)) {
+        book = withLanguages(book, stored.langSrc, stored.langTgt)
+      }
       const stored_p = await db.getProgress(id).catch(() => undefined)
       const mirror = readMirror(id)
       const newestProgress = mirror && (mirror.updatedAt ?? 0) >= (stored_p?.updatedAt ?? 0) ? mirror : stored_p
@@ -691,6 +701,29 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // Chooses the languages of the left (src) and right (tgt) columns of a
+  // multilingual book and remembers the choice per book. Row indices stay the
+  // same, so the reading position and progress carry over.
+  const setLanguages = useCallback(async (left: string, right: string) => {
+    const s = stateRef.current
+    const langs = s.book?.multi?.languages
+    if (!s.book || !langs || left === right || !langs.includes(left) || !langs.includes(right)) return
+    if (left === s.langSrc && right === s.langTgt) return
+    ttsRef.current?.stop()
+    closeWordPopup()
+    dispatch({ type: 'LANGS', book: withLanguages(s.book, left, right) })
+    const id = s.bookId
+    if (!id) return
+    try {
+      const stored = await db.getBook(id)
+      if (stored) await db.putBook({ ...stored, langSrc: left, langTgt: right })
+      const books = await db.getBooks().catch(() => null)
+      if (books) dispatch({ type: 'SET_BOOKS', books })
+    } catch {
+      /* persisting is best-effort; the in-memory choice still applies */
+    }
+  }, [closeWordPopup])
+
   const stopSpeaking = useCallback(() => {
     ttsRef.current?.stop()
     dispatch({ type: 'SPEAK', index: null, continuous: false })
@@ -728,7 +761,7 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
     markAsReadAndNext, markAsUnread, onUserScrolled, rememberScrollPosition, setCurrentPair,
     goToPrevChapter, goToNextChapter,
     toggleTheme, toggleColumns, toggleExpandMode, expandColumn, setFontSize,
-    toggleSpeak, startContinuousReading, stopSpeaking, translateWordAction, setTtsSide, dismissError,
+    toggleSpeak, startContinuousReading, stopSpeaking, translateWordAction, setTtsSide, setLanguages, dismissError,
     wordPopup, showWordPopup, closeWordPopup
   }
 

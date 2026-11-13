@@ -8,12 +8,14 @@ import {
 import ReaderList from './ReaderList'
 import PageSlider from './PageSlider'
 import ChapterSidebar from './ChapterSidebar'
+import LanguageSelector from './LanguageSelector'
 
 export default function ReaderScreen() {
   const reader = useReader()
   const { state, dismissError } = reader
   const [showToolbar, setShowToolbar] = useState(true)
   const [showSidebar, setShowSidebar] = useState(false)
+  const [showLangs, setShowLangs] = useState(false)
   const [preview, setPreview] = useState<number | null>(null)
   const touchStart = useRef<{ y: number } | null>(null)
   const currentShown = preview ?? state.currentPair
@@ -27,6 +29,16 @@ export default function ReaderScreen() {
             <IconLibrary size={18} />
           </button>
           <div className="name">{state.book ? bookDisplayTitle(state.book, state.fileName) : state.fileName}</div>
+          {state.book?.multi && (
+            <button
+              className="iconbtn"
+              style={{ width: 'auto', minWidth: 34, padding: '0 6px', fontSize: 12, fontWeight: 700 }}
+              title="Языки колонок"
+              onClick={() => setShowLangs(true)}
+            >
+              {state.langSrc.toUpperCase()}·{state.langTgt.toUpperCase()}
+            </button>
+          )}
           <button
             className="iconbtn"
             style={{ width: 'auto', minWidth: 34, padding: '0 6px', fontSize: 12, fontWeight: 700, gap: 3 }}
@@ -105,6 +117,7 @@ export default function ReaderScreen() {
       )}
 
       {showSidebar && <ChapterSidebar onClose={() => setShowSidebar(false)} />}
+      {showLangs && state.book?.multi && <LanguageSelector onClose={() => setShowLangs(false)} />}
       {state.error && <div className="snackbar" onClick={dismissError}>{state.error}</div>}
     </div>
   )
