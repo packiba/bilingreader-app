@@ -114,18 +114,14 @@ export default function ReaderScreen() {
           <button className="iconbtn" title="Свернуть/развернуть тулбар" onClick={() => setShowToolbar((v) => !v)}>
             {showToolbar ? <IconDropdown size={18} /> : <IconDropup size={18} />}
           </button>
-          <span className="count">{currentShown + 1} / {totalShown}</span>
-          {showToolbar && (
-            <button className="iconbtn" title="Предыдущая глава" onClick={reader.goToPrevChapter}>
-              <IconPrev size={18} />
-            </button>
-          )}
+          {showToolbar && <span className="count">{currentShown + 1} / {totalShown}</span>}
+          <button className="iconbtn" title="Предыдущая глава" onClick={reader.goToPrevChapter}>
+            <IconPrev size={18} />
+          </button>
           <PageSlider onDragPreview={setPreview} disabled={!showToolbar} />
-          {showToolbar && (
-            <button className="iconbtn" title="Следующая глава" onClick={reader.goToNextChapter}>
-              <IconNext size={18} />
-            </button>
-          )}
+          <button className="iconbtn" title="Следующая глава" onClick={reader.goToNextChapter}>
+            <IconNext size={18} />
+          </button>
           <button className="iconbtn" title="Главы" onClick={() => setShowSidebar(true)}>
             <IconMenu size={18} />
           </button>

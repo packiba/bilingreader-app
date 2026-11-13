@@ -76,6 +76,8 @@ body {
 .rowwrap { border-bottom: 0.5px solid var(--divider); background: var(--zebra1); position: relative; }
 .rowwrap.zebra { background: var(--zebra2); }
 .rowtext { font-size: 15px; line-height: 1.45; }
+.cell.expanded .col.left, .cell.expanded .col.right { padding: 6px 34px 6px 18px; }
+.cell.expanded .rowtext { line-height: 1.67; }
 .rowtext.dlg {}
 .dimmed .rowtext { color: var(--text-dimmed); }
 .chapterhead { font-weight: 700; font-size: 15px; padding: 6px 0; background: var(--zebra1); border-bottom: 0.5px solid var(--divider); }

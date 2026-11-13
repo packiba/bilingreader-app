@@ -43,8 +43,8 @@ export default function PairRowContent({
   )
   const expand = expandMode as 'SRC' | 'TGT' | 'NONE' | 'AWAITING'
   const cellContent =
-    expand === 'SRC' ? srcCol :
-    expand === 'TGT' ? tgtCol : (
+    expand === 'SRC' ? <div className="cell expanded">{srcCol}</div> :
+    expand === 'TGT' ? <div className="cell expanded">{tgtCol}</div> : (
       <div className="cell">
         {srcCol}
         <div className="dividerC" />
