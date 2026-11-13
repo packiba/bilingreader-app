@@ -3,6 +3,8 @@ import { mtCode } from '../languages'
 type Provider = 'google' | 'mymemory' | 'libre'
 
 const cache = new Map<string, string>()
+const CACHE_MAX = 500
+const PROVIDER_TIMEOUT_MS = 5000
 
 // Google's public "gtx" client endpoint. Undocumented, but it's a plain GET
 // with no custom headers, so it never triggers a CORS preflight, and Google
@@ -67,22 +69,25 @@ export async function translateWord(word: string, from: string, to: string): Pro
   const key = `${from}|${to}|${word}`
   const hit = cache.get(key)
   if (hit) return hit
-  const controller = new AbortController()
-  const timeout = window.setTimeout(() => controller.abort(), 8000)
-  try {
-    let lastError: unknown = new Error('no provider')
-    for (const [, run] of PROVIDERS) {
-      try {
-        const t = await run(word, from, to, controller.signal)
-        cache.set(key, t)
-        return t
-      } catch (e) {
-        lastError = e
-        if (controller.signal.aborted) break
-      }
+  // Each provider gets its own deadline. With one shared 8 s timer, a
+  // provider that hung (e.g. Google blocked on the network) used up the whole
+  // budget and the fallbacks were never tried.
+  let lastError: unknown = new Error('no provider')
+  for (const [, run] of PROVIDERS) {
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS)
+    try {
+      const t = await run(word, from, to, controller.signal)
+      if (cache.size >= CACHE_MAX) cache.delete(cache.keys().next().value as string)
+      cache.set(key, t)
+      return t
+    } catch (e) {
+      lastError = e
+      // Offline: every provider will fail the same way, so stop right away.
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) break
+    } finally {
+      window.clearTimeout(timeout)
     }
-    throw lastError
-  } finally {
-    window.clearTimeout(timeout)
   }
+  throw lastError
 }

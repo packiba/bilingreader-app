@@ -10,6 +10,12 @@ type Store = (typeof STORES)[number]
 // case writes used to fail silently and the reading position was never saved.
 let dbPromise: Promise<IDBDatabase> | null = null
 const OPEN_TIMEOUT_MS = 6000
+// iOS WebKit has a long-standing bug where, after the app returns from the
+// background, IndexedDB requests on an existing connection simply never
+// complete (no success, no error). Without a deadline the library stayed
+// empty and "Загрузка…" spun forever. A stuck transaction is aborted and
+// retried once on a fresh connection.
+const TX_TIMEOUT_MS = 15000
 
 function isRetryableConnectionError(error: unknown): boolean {
   const name = error instanceof Error ? error.name : ''
@@ -65,11 +71,25 @@ async function tx<T = void>(store: Store, mode: IDBTransactionMode, run: (s: IDB
       return await new Promise<T>((resolve, reject) => {
         const t = db.transaction(store, mode)
         const req = run(t.objectStore(store))
-        let result: T
-        req.onsuccess = () => { result = req.result as T }
-        t.oncomplete = () => resolve(result)
-        t.onerror = () => reject(t.error ?? req.error)
-        t.onabort = () => reject(t.error ?? new Error('IndexedDB: транзакция прервана'))
+        let settled = false
+        const finish = (fn: () => void) => {
+          if (settled) return
+          settled = true
+          window.clearTimeout(timer)
+          fn()
+        }
+        const timer = window.setTimeout(() => {
+          try { t.abort() } catch { /* already finished */ }
+          const error = new Error('IndexedDB не отвечает')
+          error.name = 'TimeoutError'
+          finish(() => reject(error))
+        }, TX_TIMEOUT_MS)
+        // The result is read once the transaction has committed, not in
+        // onsuccess: a cursor request fires success repeatedly and is
+        // "pending" again after continue(), where reading .result throws.
+        t.oncomplete = () => finish(() => resolve((req.readyState === 'done' ? req.result : undefined) as T))
+        t.onerror = () => finish(() => reject(t.error ?? req.error))
+        t.onabort = () => finish(() => reject(t.error ?? new Error('IndexedDB: транзакция прервана')))
       })
     } catch (e) {
       lastError = e
@@ -116,19 +136,33 @@ export function putBook(b: StoredBook): Promise<void> {
 }
 
 export async function getBooks(): Promise<StoredBook[]> {
-  const all = await tx<StoredBook[]>('books', 'readonly', (s) => s.getAll())
-  // The library only needs metadata. Keeping every book's full text in React
-  // state for the whole session wasted memory; the text is re-read with
-  // getBook() when a book is actually opened.
-  return all.map((b) => ({ ...b, rawJson: '' }))
+  // The library only needs metadata. getAll() used to materialise the full
+  // text (and base64 cover) of EVERY book at once just to throw it away,
+  // which on an iPad with a few large books is enough memory pressure for
+  // Safari to kill the page. A cursor holds only one record at a time.
+  const out: StoredBook[] = []
+  await tx('books', 'readonly', (s) => {
+    const req = s.openCursor()
+    req.addEventListener('success', () => {
+      const cursor = req.result
+      if (!cursor) return
+      const b = cursor.value as StoredBook
+      out.push({ ...b, rawJson: '' })
+      cursor.continue()
+    })
+    return req
+  })
+  return out
 }
 
 export function getBook(id: string): Promise<StoredBook | undefined> {
   return tx('books', 'readonly', (s) => s.get(id))
 }
 
-export function deleteBook(id: string): Promise<void> {
-  return tx('books', 'readwrite', (s) => s.delete(id))
+export async function deleteBook(id: string): Promise<void> {
+  await tx('books', 'readwrite', (s) => s.delete(id))
+  // Progress lives in its own store; without this it was orphaned forever.
+  await tx('progress', 'readwrite', (s) => s.delete(id)).catch(() => {})
 }
 
 export function putProgress(id: string, p: BookProgress): Promise<void> {
@@ -154,5 +188,22 @@ export async function clearAll(): Promise<void> {
     for (const name of STORES) t.objectStore(name).clear()
     t.oncomplete = () => resolve()
     t.onerror = () => reject(t.error)
+    t.onabort = () => reject(t.error ?? new Error('IndexedDB: транзакция прервана'))
   })
+}
+
+// Ask the browser not to evict our storage under pressure. Best-effort: not
+// every browser supports it, and Safari may decline.
+export function requestPersistentStorage(): void {
+  try {
+    void navigator.storage?.persist?.().catch(() => {})
+  } catch { /* unsupported */ }
+}
+
+// Turns low-level storage errors into a message the reader can act on.
+export function storageErrorMessage(e: unknown, fallback: string): string {
+  const name = e instanceof Error || e instanceof DOMException ? e.name : ''
+  if (name === 'QuotaExceededError') return 'Недостаточно места на устройстве для сохранения книги'
+  if (name === 'TimeoutError') return 'Хранилище не отвечает. Попробуйте ещё раз или перезапустите приложение'
+  return e instanceof Error && e.message ? e.message : fallback
 }

@@ -12,14 +12,14 @@ export default function LibraryScreen() {
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0]
     e.target.value = ''
-    if (f) void importFile(f)
+    if (f && !state.isImporting) void importFile(f)
   }
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setDragOver(false)
     const f = e.dataTransfer.files?.[0]
-    if (f && (f.name.endsWith('.json') || f.name.endsWith('.blb'))) void importFile(f)
+    if (f && /\.(json|blb)$/i.test(f.name) && !state.isImporting) void importFile(f)
   }
 
   return (
@@ -68,7 +68,11 @@ export default function LibraryScreen() {
                   <img className="cover" src={b.coverDataUrl} alt="" />
                 </div>
               )}
-              <button className="btn delete" onClick={(e) => { e.stopPropagation(); void deleteBook(b.id) }}>Удалить</button>
+              <button className="btn delete" onClick={(e) => {
+                e.stopPropagation()
+                // One stray tap used to wipe the book and its reading progress.
+                if (window.confirm(`Удалить «${b.title || b.name}» вместе с прогрессом чтения?`)) void deleteBook(b.id)
+              }}>Удалить</button>
               <div className="title">{b.title || b.name}</div>
               {b.author && <div className="meta">{b.author}</div>}
               {b.langSrc && b.langTgt && <div className="meta">{b.langSrc.toUpperCase()} → {b.langTgt.toUpperCase()}</div>}

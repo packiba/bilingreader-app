@@ -14,8 +14,14 @@ function optString(obj: Record<string, unknown>, key: string): string | null {
   return v
 }
 
+function isObj(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
+}
+
+// Non-object entries (null, numbers, strings) are skipped instead of crashing
+// the parser with a TypeError like "Cannot use 'in' operator…".
 function objArray(v: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(v) ? (v as Array<Record<string, unknown>>) : []
+  return Array.isArray(v) ? v.filter(isObj) : []
 }
 
 function pairArray(v: unknown): AlignedPair[] {
@@ -161,6 +167,9 @@ function parseBlb(root: Record<string, unknown>): Book {
 
 function finalizeBook(partial: { roots: BookNode[]; chapters: Chapter[] }): Book {
   const totalPairs = partial.chapters.reduce((sum, c) => sum + c.pairs.length, 0)
+  // A structurally valid file with no sentence pairs used to open as an empty
+  // reader showing "1 / 0".
+  if (totalPairs === 0) throw new Error('В файле нет ни одной пары предложений')
   return {
     roots: partial.roots,
     chapters: partial.chapters,
@@ -187,10 +196,10 @@ export function parseBook(jsonText: string): Book {
     }
     throw new Error('Файл должен быть JSON-массивом глав или книгой в формате BLB')
   }
-  if (data.length === 0) {
+  const root = objArray(data)
+  if (root.length === 0) {
     throw new Error('Файл должен быть JSON-массивом глав')
   }
-  const root = data as Array<Record<string, unknown>>
   return isNestedFormat(root[0]) ? parseNested(root) : parseFlat(root)
 }
 
@@ -199,10 +208,13 @@ export function computeChapterStarts(book: Book, swapped: boolean): number[] {
   let acc = 0
   for (const ch of book.chapters) {
     const title = swapped ? displayTitleTgt(ch) : displayTitleSrc(ch)
-    if (title !== '—') starts.push(acc)
+    // A titled chapter with no pairs (e.g. a part heading) starts at the same
+    // index as the next one. Duplicates made "next chapter" get stuck there.
+    if (title !== '—' && starts[starts.length - 1] !== acc) starts.push(acc)
     acc += ch.pairs.length
   }
-  return starts
+  // Must point at an existing pair (a trailing empty chapter would not).
+  return starts.filter((s) => s < book.totalPairs)
 }
 
 export function buildRenderRows(book: Book, columnsSwapped: boolean, langSrc: string, langTgt: string): RenderRow[] {

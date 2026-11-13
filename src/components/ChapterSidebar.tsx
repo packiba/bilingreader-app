@@ -39,9 +39,9 @@ export default function ChapterSidebar({ onClose }: { onClose: () => void }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        {list.map((it) => (
+        {list.map((it, i) => (
           <div
-            key={it.start}
+            key={`${it.start}-${i}`}
             className={`chapter ${it.start === currentChapterStart ? 'cur' : ''}`}
             onClick={() => { setCurrentPair(it.start); onClose() }}
           >

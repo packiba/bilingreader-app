@@ -244,7 +244,7 @@ interface ReaderContextValue {
   chapterStarts: number[]
   isRead: (index: number) => boolean
   importFile: (file: File) => Promise<void>
-  openBook: (id: string) => Promise<void>
+  openBook: (id: string, opts?: { preparsed?: Book; quiet?: boolean }) => Promise<void>
   deleteBook: (id: string) => Promise<void>
   openLibrary: () => void
   backToBook: () => void
@@ -404,20 +404,40 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
   }, [flush])
 
   useEffect(() => {
-    db.getBooks().then((books) => dispatch({ type: 'SET_BOOKS', books })).catch(() => {})
+    db.requestPersistentStorage()
+    db.getBooks().then((books) => dispatch({ type: 'SET_BOOKS', books })).catch((e) => {
+      dispatch({ type: 'SET_ERROR', message: db.storageErrorMessage(e, 'Не удалось загрузить библиотеку') })
+    })
     let lastId: string | null = null
     try { lastId = localStorage.getItem(LAST_BOOK_KEY) } catch { /* ignore */ }
-    if (lastId) openBook(lastId)
-    else db.getMeta('lastBookId').then((id) => { if (id) openBook(id) }).catch(() => {})
+    // Reopening the last book on launch is a convenience: if it fails (book
+    // deleted, file corrupted) stay quietly in the library instead of
+    // greeting the user with an error on every start.
+    if (lastId) void openBook(lastId, { quiet: true })
+    else db.getMeta('lastBookId').then((id) => { if (id) void openBook(id, { quiet: true }) }).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const openBook = useCallback(async (id: string) => {
+  // Every openBook call gets a sequence number; only the newest one may
+  // finish. Otherwise tapping a book while the last one is still being
+  // auto-opened at launch could end up showing whichever finished last.
+  const openSeq = useRef(0)
+
+  const resetTransient = useCallback(() => {
+    ttsRef.current?.stop()
+    closeWordPopup()
+  }, [closeWordPopup])
+
+  const openBook = useCallback(async (id: string, opts?: { preparsed?: Book; quiet?: boolean }) => {
+    const seq = ++openSeq.current
     dispatch({ type: 'SET_LOADING', v: true })
     try {
       const stored = await db.getBook(id)
       if (!stored) throw new Error('Книга не найдена')
-      const book = parseBook(stored.rawJson)
+      if (seq !== openSeq.current) return
+      // Parsing a large book takes a noticeable moment; importFile already
+      // did it, so don't do it twice.
+      const book = opts?.preparsed ?? parseBook(stored.rawJson)
       const stored_p = await db.getProgress(id).catch(() => undefined)
       const mirror = readMirror(id)
       const newestProgress = mirror && (mirror.updatedAt ?? 0) >= (stored_p?.updatedAt ?? 0) ? mirror : stored_p
@@ -425,6 +445,11 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
       latestPositionRef.current = { bookId: id, index: progress.lastPair }
       try { localStorage.setItem(LAST_BOOK_KEY, id) } catch { /* ignore */ }
       await db.setMeta('lastBookId', id).catch(() => {})
+      if (seq !== openSeq.current) return
+      // Save where we were in the previous book, and stop its audio / popup
+      // (the popup is keyed by row index and would reappear in the new book).
+      if (stateRef.current.bookId && stateRef.current.bookId !== id) flush(stateRef.current)
+      resetTransient()
       dispatch({
         type: 'OPENED',
         book,
@@ -437,10 +462,16 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
         ttsSide: stored.ttsSide ?? 'tgt'
       })
     } catch (e) {
+      if (seq !== openSeq.current) return
       dispatch({ type: 'SET_LOADING', v: false })
-      dispatch({ type: 'SET_ERROR', message: e instanceof Error ? e.message : 'Не удалось открыть книгу' })
+      if (opts?.quiet) {
+        try { if (localStorage.getItem(LAST_BOOK_KEY) === id) localStorage.removeItem(LAST_BOOK_KEY) } catch { /* ignore */ }
+        db.setMeta('lastBookId', '').catch(() => {})
+        return
+      }
+      dispatch({ type: 'SET_ERROR', message: db.storageErrorMessage(e, 'Не удалось открыть книгу') })
     }
-  }, [])
+  }, [flush, resetTransient])
 
   const importFile = useCallback(async (file: File) => {
     dispatch({ type: 'SET_IMPORTING', v: true })
@@ -465,37 +496,54 @@ export function ReaderProvider({ children }: { children: React.ReactNode }) {
         langTgt: book.langTgt,
         ttsSide: 'tgt'
       })
-      const books = await db.getBooks()
-      dispatch({ type: 'SET_BOOKS', books })
-      await openBook(id)
+      const books = await db.getBooks().catch(() => null)
+      if (books) dispatch({ type: 'SET_BOOKS', books })
+      await openBook(id, { preparsed: book })
     } catch (e) {
+      dispatch({ type: 'SET_ERROR', message: db.storageErrorMessage(e, 'Не удалось открыть файл') })
+    } finally {
+      // openBook reports its own failures without touching this flag, which
+      // used to leave "Открываю…" on the import card forever.
       dispatch({ type: 'SET_IMPORTING', v: false })
-      dispatch({ type: 'SET_ERROR', message: e instanceof Error ? e.message : 'Не удалось открыть файл' })
     }
   }, [openBook])
 
   const deleteBook = useCallback(async (id: string) => {
-    await db.deleteBook(id)
+    try {
+      await db.deleteBook(id)
+    } catch (e) {
+      dispatch({ type: 'SET_ERROR', message: db.storageErrorMessage(e, 'Не удалось удалить книгу') })
+      return
+    }
     try {
       localStorage.removeItem(PROGRESS_KEY + id)
       if (localStorage.getItem(LAST_BOOK_KEY) === id) localStorage.removeItem(LAST_BOOK_KEY)
     } catch { /* ignore */ }
-    const books = await db.getBooks()
-    dispatch({ type: 'SET_BOOKS', books })
     if (stateRef.current.bookId === id) {
+      clearPersistTimers()
+      // Don't let a pending/hide-time flush resurrect progress for the
+      // deleted book.
+      latestPositionRef.current = null
+      resetTransient()
       dispatch({ type: 'CLOSED' })
     }
-  }, [])
+    db.getMeta('lastBookId').then((v) => { if (v === id) return db.setMeta('lastBookId', '') }).catch(() => {})
+    const books = await db.getBooks().catch(() => null)
+    if (books) dispatch({ type: 'SET_BOOKS', books })
+    else dispatch({ type: 'SET_BOOKS', books: stateRef.current.books.filter((b) => b.id !== id) })
+  }, [clearPersistTimers, resetTransient])
 
   const closeBook = useCallback(() => {
     flush(stateRef.current)
-    if (persistTimer.current != null) window.clearTimeout(persistTimer.current)
+    resetTransient()
     dispatch({ type: 'CLOSED' })
-  }, [flush])
+  }, [flush, resetTransient])
 
   const openLibrary = useCallback(() => {
+    flush(stateRef.current)
+    closeWordPopup()
     dispatch({ type: 'SCREEN', screen: 'library' })
-  }, [])
+  }, [flush, closeWordPopup])
 
   const backToBook = useCallback(() => {
     if (stateRef.current.book) dispatch({ type: 'SCREEN', screen: 'reader' })

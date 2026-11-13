@@ -48,6 +48,9 @@ export default function ReaderList() {
   const heightsRef = useRef<Map<number, number>>(new Map())
   const lastToken = useRef(0)
   const pendingScroll = useRef<number | null>(null)
+  // Row at the top of the viewport in the current layout (unfiltered by the
+  // suppress window), used to re-anchor when the height map is replaced.
+  const topIndexRef = useRef<number | null>(null)
   const currentPairRef = useRef(state.currentPair)
   currentPairRef.current = state.currentPair
 
@@ -86,22 +89,6 @@ export default function ReaderList() {
   const measureKeyRef = useRef(measureKey)
   measureKeyRef.current = measureKey
   const snappedForKeyRef = useRef<string | null>(null)
-  const scrollVersionRef = useRef(0)
-  const measureStartScrollVersionRef = useRef(0)
-  // Record the scroll generation at the beginning of each re-measure. If the
-  // user scrolls while measuring, completion must not snap them back to the
-  // position that was current when measurement began.
-  useLayoutEffect(() => {
-    measureStartScrollVersionRef.current = scrollVersionRef.current
-  }, [measureKey])
-
-  useEffect(() => {
-    const el = containerRef.current?.querySelector('[data-scroll]') as HTMLElement | null
-    if (!el) return
-    const onNativeScroll = () => { scrollVersionRef.current++ }
-    el.addEventListener('scroll', onNativeScroll, { passive: true })
-    return () => el.removeEventListener('scroll', onNativeScroll)
-  }, [size.width, size.height])
 
   // The measure pass is mounted only until it has reported for the current
   // key, then unmounted so the hidden DOM does not stay in memory.
@@ -128,14 +115,21 @@ export default function ReaderList() {
     // pointerup), which was silently breaking tap-to-translate.
     if (snappedForKeyRef.current === measureKeyRef.current) return
     snappedForKeyRef.current = measureKeyRef.current
-    // Only perform the corrective snap if the user has not moved the list
-    // since this measurement started. A late measurement must never override
-    // an intentional scroll.
-    if (scrollVersionRef.current !== measureStartScrollVersionRef.current) return
+    // Swapping estimated heights for real ones keeps the same pixel offset,
+    // which now points at a different row (on a real book: 1690 → 4581). So
+    // always re-anchor to the row that was at the top just before the swap.
+    //
+    // This used to be skipped whenever a scroll event had happened since the
+    // measurement started — but the restore-on-open scroll is itself a scroll
+    // event, so the snap was skipped on practically every launch and the
+    // book reopened thousands of rows away from where the reader stopped
+    // (and that wrong row was then saved as the new position). Anchoring to
+    // the row currently on top also respects a user scroll made meanwhile.
+    const anchor = topIndexRef.current ?? currentPairRef.current
     suppress(600)
     const el = containerRef.current?.querySelector('[data-scroll]') as HTMLElement | null
     if (el) el.style.scrollBehavior = 'auto'
-    listRef.current?.scrollToItem(currentPairRef.current, 'start')
+    listRef.current?.scrollToItem(anchor, 'start')
   }, [])
 
   const itemSize = useCallback((index: number) => heightsRef.current.get(index) ?? ESTIMATED_ROW, [])
@@ -180,6 +174,7 @@ export default function ReaderList() {
   }, [])
 
   const onItemsRendered = useCallback((p: ListOnItemsRenderedProps) => {
+    topIndexRef.current = p.visibleStartIndex
     // react-window can call this many times within a single scroll gesture
     // (once per items-range change, which on a long book can be almost
     // every frame). Each call used to dispatch immediately, and every

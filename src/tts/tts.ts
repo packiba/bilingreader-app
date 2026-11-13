@@ -9,6 +9,12 @@ const START_WATCHDOG_MS = 3000
 // load (voices load asynchronously), which used to surface the "voice not
 // found" message even though a matching voice was available a moment later.
 const VOICE_WAIT_MS = 4000
+// After an utterance has started, WebKit sometimes never fires onend (after
+// the app was backgrounded, an audio interruption, a voice switch…). The
+// speaker stayed in "stop" state and continuous reading hung forever. While
+// an utterance is active we poll the engine; if it has been idle for two
+// consecutive checks the utterance is treated as finished.
+const END_POLL_MS = 1000
 
 // Browsers disagree on the separator (iOS "bg-BG", Android "bg_BG").
 const norm = (l: string) => l.toLowerCase().replace(/_/g, '-')
@@ -96,10 +102,15 @@ export function createTts(): TtsController {
     })
   }
 
+  let endPoll: number | null = null
   const clearWatchdog = () => {
     if (watchdog != null) {
       window.clearTimeout(watchdog)
       watchdog = null
+    }
+    if (endPoll != null) {
+      window.clearInterval(endPoll)
+      endPoll = null
     }
   }
 
@@ -110,6 +121,9 @@ export function createTts(): TtsController {
     // state, and every speak() call after that is silently swallowed —
     // this is what made continuous reading stop after a couple of lines.
     // Only cancel if there is genuinely something to interrupt.
+    // Detach the previous utterance first, so its onend/onerror caused by this
+    // cancel() can never be mistaken for the new one finishing.
+    currentUtter = null
     if (synth.speaking || synth.pending) synth.cancel()
 
     const utter = new SpeechSynthesisUtterance(text)
@@ -120,16 +134,29 @@ export function createTts(): TtsController {
 
     utter.onstart = () => {
       clearWatchdog()
+      let idleTicks = 0
+      endPoll = window.setInterval(() => {
+        if (currentUtter !== utter) { clearWatchdog(); return }
+        // Paused by the system (e.g. app in background) is not "finished".
+        if (synth.speaking || synth.pending || synth.paused || document.hidden) { idleTicks = 0; return }
+        if (++idleTicks < 2) return
+        clearWatchdog()
+        speaking = false
+        currentUtter = null
+        if (!intentionalStop) controller.onDone()
+      }, END_POLL_MS)
     }
     utter.onend = () => {
       if (currentUtter !== utter) return
       clearWatchdog()
+      currentUtter = null
       speaking = false
       if (!intentionalStop) controller.onDone()
     }
     utter.onerror = () => {
       if (currentUtter !== utter) return
       clearWatchdog()
+      currentUtter = null
       speaking = false
       if (!intentionalStop) controller.onError()
     }
@@ -141,6 +168,8 @@ export function createTts(): TtsController {
     watchdog = window.setTimeout(() => {
       watchdog = null
       if (currentUtter !== utter) return
+      currentUtter = null
+      if (synth.speaking || synth.pending) synth.cancel()
       speaking = false
       if (!intentionalStop) controller.onError()
     }, START_WATCHDOG_MS)
@@ -173,7 +202,8 @@ export function createTts(): TtsController {
     callToken++
     clearWatchdog()
     currentUtter = null
-    synth.cancel()
+    // Same Safari quirk as in doSpeak: cancel() on an idle engine can wedge it.
+    if (synth.speaking || synth.pending) synth.cancel()
     speaking = false
   }
   return controller
